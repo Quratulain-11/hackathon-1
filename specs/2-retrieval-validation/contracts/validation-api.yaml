@@ -1,0 +1,285 @@
+openapi: 3.0.0
+info:
+  title: RAG Chatbot Retrieval Validation API
+  description: API for validating retrieval accuracy and performance of the RAG system
+  version: 1.0.0
+
+paths:
+  /validation/run:
+    post:
+      summary: Run a retrieval validation test
+      description: Performs similarity search with a query and validates the results
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: The query text to validate retrieval for
+                  example: "What is the ROS 2 nervous system architecture?"
+                top_k:
+                  type: integer
+                  description: Number of results to retrieve (default 5)
+                  default: 5
+                  minimum: 1
+                  maximum: 20
+                threshold:
+                  type: number
+                  description: Minimum relevance score threshold (default 0.7)
+                  default: 0.7
+                  minimum: 0.0
+                  maximum: 1.0
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+        '400':
+          description: Invalid input parameters
+        '500':
+          description: Server error during validation
+
+  /validation/batch:
+    post:
+      summary: Run batch validation tests
+      description: Runs multiple validation tests and returns aggregated metrics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - queries
+              properties:
+                queries:
+                  type: array
+                  items:
+                    type: string
+                  description: List of query texts to validate
+                  example: ["What is ROS 2?", "How to model a robot?"]
+                top_k:
+                  type: integer
+                  description: Number of results to retrieve for each query
+                  default: 5
+                threshold:
+                  type: number
+                  description: Minimum relevance score threshold
+                  default: 0.7
+      responses:
+        '200':
+          description: Batch validation results with aggregated metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
+        '400':
+          description: Invalid input parameters
+        '500':
+          description: Server error during validation
+
+  /validation/metrics:
+    get:
+      summary: Get aggregated validation metrics
+      description: Returns overall performance metrics from previous validation runs
+      parameters:
+        - name: from_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Start date for metrics aggregation
+        - name: to_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: End date for metrics aggregation
+      responses:
+        '200':
+          description: Aggregated validation metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrievalMetrics'
+        '500':
+          description: Server error retrieving metrics
+
+components:
+  schemas:
+    ValidationResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for this validation result
+        query:
+          type: string
+          description: The original query text
+        query_embedding:
+          type: array
+          items:
+            type: number
+          description: Vector representation of the query
+        retrieved_chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentChunk'
+          description: Chunks returned by similarity search
+        relevance_scores:
+          type: array
+          items:
+            type: number
+          description: Similarity scores for each retrieved chunk
+        expected_chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentChunk'
+          description: Chunks that should have been retrieved (for validation)
+        manual_validation:
+          type: boolean
+          description: Whether manual validation was performed
+        relevance_ratings:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 5
+          description: 1-5 ratings for each retrieved chunk
+        validation_notes:
+          type: string
+          description: Comments from manual validation
+        precision_at_k:
+          type: number
+          description: Precision at K metric
+          minimum: 0.0
+          maximum: 1.0
+        mrr:
+          type: number
+          description: Mean Reciprocal Rank
+          minimum: 0.0
+          maximum: 1.0
+        response_time_ms:
+          type: number
+          description: Time taken for the retrieval operation in milliseconds
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when validation was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of last update
+
+    DocumentChunk:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the chunk
+        content:
+          type: string
+          description: The text content of the chunk
+        embedding:
+          type: array
+          items:
+            type: number
+          description: Vector embedding of the content (optional)
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Metadata associated with the chunk
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Update timestamp
+
+    RetrievalMetrics:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for these metrics
+        total_queries:
+          type: integer
+          description: Number of validation queries run
+        avg_precision_at_k:
+          type: number
+          description: Average precision across all queries
+          minimum: 0.0
+          maximum: 1.0
+        avg_mrr:
+          type: number
+          description: Average mean reciprocal rank
+          minimum: 0.0
+          maximum: 1.0
+        avg_response_time_ms:
+          type: number
+          description: Average response time in milliseconds
+        retrieval_success_rate:
+          type: number
+          description: Percentage of successful retrievals
+          minimum: 0.0
+          maximum: 1.0
+        relevance_threshold_met:
+          type: number
+          description: Percentage of queries meeting relevance threshold
+          minimum: 0.0
+          maximum: 1.0
+        validation_date:
+          type: string
+          format: date-time
+          description: When metrics were calculated
+        configuration:
+          type: object
+          additionalProperties: true
+          description: Settings used for validation
+
+    ValidationReport:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for this report
+        metrics:
+          $ref: '#/components/schemas/RetrievalMetrics'
+          description: Aggregated metrics
+        individual_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationResult'
+          description: Detailed results for each query
+        summary_notes:
+          type: string
+          description: Executive summary of validation outcomes
+        recommendations:
+          type: array
+          items:
+            type: string
+          description: Suggested improvements based on validation
+        limitations_documented:
+          type: array
+          items:
+            type: string
+          description: Known limitations discovered during validation
+        report_date:
+          type: string
+          format: date-time
+          description: When report was generated

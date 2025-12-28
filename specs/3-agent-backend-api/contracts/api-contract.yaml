@@ -1,0 +1,200 @@
+openapi: 3.0.0
+info:
+  title: RAG Chatbot Agent-Based Backend API
+  description: API for RAG-based chatbot with agent-driven response generation
+  version: 1.0.0
+
+paths:
+  /chat:
+    post:
+      summary: Generate a response to a user query using RAG
+      description: Accepts a user query, retrieves relevant document chunks, and generates an AI response based on the retrieved content
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Successful response with AI-generated answer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Bad request - invalid query or parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error during processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Service unavailable - retrieval or LLM service down
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the API
+      responses:
+        '200':
+          description: API is healthy and ready to process requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2025-12-21T20:00:00Z"
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: The user's query text
+          example: "What is the ROS 2 nervous system architecture?"
+        top_k:
+          type: integer
+          description: Number of document chunks to retrieve (default: 5)
+          minimum: 1
+          maximum: 20
+          default: 5
+          example: 5
+        temperature:
+          type: number
+          description: Response randomness (default: 0.7)
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.7
+          example: 0.7
+        max_tokens:
+          type: integer
+          description: Maximum response length (default: 500)
+          minimum: 1
+          maximum: 2000
+          default: 500
+          example: 500
+
+    ChatResponse:
+      type: object
+      required:
+        - answer
+        - sources
+        - query
+        - confidence
+        - retrieval_time_ms
+        - response_time_ms
+        - timestamp
+      properties:
+        answer:
+          type: string
+          description: The generated response text
+          example: "The ROS 2 nervous system architecture consists of..."
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentSource'
+          description: Document chunks used to generate the response
+        query:
+          type: string
+          description: The original user query
+          example: "What is the ROS 2 nervous system architecture?"
+        confidence:
+          type: number
+          description: Indicator of response relevance (0.0-1.0)
+          minimum: 0.0
+          maximum: 1.0
+          example: 0.85
+        retrieval_time_ms:
+          type: number
+          description: Time taken for content retrieval in milliseconds
+          example: 245.3
+        response_time_ms:
+          type: number
+          description: Total time for response generation in milliseconds
+          example: 1200.7
+        timestamp:
+          type: string
+          format: date-time
+          description: When the response was generated
+          example: "2025-12-21T20:00:00Z"
+
+    DocumentSource:
+      type: object
+      required:
+        - content
+        - file_path
+        - page_title
+        - relevance_score
+      properties:
+        content:
+          type: string
+          description: The text content of the chunk
+          example: "ROS 2 provides a middleware layer that enables communication..."
+        file_path:
+          type: string
+          description: Path to the source document
+          example: "docs/docs/module-1-ros-nervous-system/index.md"
+        page_title:
+          type: string
+          description: Title of the source page
+          example: "Module 1: ROS 2 Nervous System"
+        heading:
+          type: string
+          description: Heading within the document (if applicable)
+          example: "Architecture Overview"
+        relevance_score:
+          type: number
+          description: Similarity score to the query (0.0-1.0)
+          minimum: 0.0
+          maximum: 1.0
+          example: 0.92
+        chunk_index:
+          type: integer
+          description: Position of chunk in original document
+          example: 2
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - error_code
+        - timestamp
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Query is too long. Maximum 1000 characters allowed."
+        error_code:
+          type: string
+          description: Machine-readable error code
+          example: "QUERY_TOO_LONG"
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+          example: {"max_length": 1000, "actual_length": 1200}
+        timestamp:
+          type: string
+          format: date-time
+          description: When the error occurred
+          example: "2025-12-21T20:00:00Z"

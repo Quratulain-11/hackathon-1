@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m src.rag_pipeline.cli.main test_run --docs-path docs/docs)",
+      "Bash(pip show python-frontmatter)"
+    ]
+  }
+}

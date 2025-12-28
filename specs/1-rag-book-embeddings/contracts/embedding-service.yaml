@@ -1,0 +1,233 @@
+openapi: 3.0.0
+info:
+  title: RAG Chatbot Embedding Service
+  description: API for processing Docusaurus documentation and generating embeddings
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Development server
+
+paths:
+  /process:
+    post:
+      summary: Process documentation and generate embeddings
+      description: Process Markdown files from a directory and store embeddings in vector database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessRequest'
+      responses:
+        '200':
+          description: Processing completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessResponse'
+        '400':
+          description: Invalid request parameters
+        '500':
+          description: Internal server error during processing
+
+  /process/status/{job_id}:
+    get:
+      summary: Get processing job status
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+
+  /documents:
+    get:
+      summary: List processed documents
+      responses:
+        '200':
+          description: List of processed documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DocumentSource'
+
+  /search:
+    post:
+      summary: Semantic search in processed documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+components:
+  schemas:
+    ProcessRequest:
+      type: object
+      properties:
+        docs_path:
+          type: string
+          description: Path to documentation directory
+          example: "./docs/docs"
+        chunk_size:
+          type: integer
+          description: Maximum tokens per chunk
+          default: 512
+        overlap:
+          type: integer
+          description: Token overlap between chunks
+          default: 64
+        embedding_model:
+          type: string
+          description: Cohere embedding model to use
+          default: "embed-multilingual-v2.0"
+        collection_name:
+          type: string
+          description: Qdrant collection name
+          default: "docusaurus-content"
+      required:
+        - docs_path
+
+    ProcessResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: ID of the processing job
+        documents_processed:
+          type: integer
+          description: Number of documents processed
+        chunks_created:
+          type: integer
+          description: Number of chunks created
+        status:
+          type: string
+          description: Processing status
+          enum: [completed, processing, failed]
+
+    JobStatus:
+      type: object
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        progress:
+          type: number
+          format: float
+          description: Progress as percentage (0.0 to 1.0)
+        documents_processed:
+          type: integer
+        total_documents:
+          type: integer
+        error_message:
+          type: string
+          description: Error message if status is failed
+
+    DocumentSource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_path:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+        checksum:
+          type: string
+        last_processed_at:
+          type: string
+          format: date-time
+        chunk_count:
+          type: integer
+
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query text
+        top_k:
+          type: integer
+          description: Number of results to return
+          default: 5
+        filters:
+          type: object
+          description: Metadata filters for search
+          properties:
+            file_path:
+              type: string
+              description: Filter by file path
+            heading:
+              type: string
+              description: Filter by heading
+      required:
+        - query
+
+    SearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        query_embedding:
+          type: array
+          items:
+            type: number
+            format: float
+
+    SearchResult:
+      type: object
+      properties:
+        chunk_id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        score:
+          type: number
+          format: float
+          description: Similarity score
+        metadata:
+          $ref: '#/components/schemas/ChunkMetadata'
+        position:
+          type: integer
+          description: Position of chunk in original document
+
+    ChunkMetadata:
+      type: object
+      properties:
+        file_path:
+          type: string
+        page_title:
+          type: string
+        heading:
+          type: string
+        section:
+          type: string
+        chunk_index:
+          type: integer
+        source_url:
+          type: string
