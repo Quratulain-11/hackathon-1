@@ -185,3 +185,6 @@ PRN
 AUX
 COM*
 LPT*
+
+# Qdrant runtime lock file
+qdrant_data/.lock
