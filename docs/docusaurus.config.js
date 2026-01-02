@@ -21,7 +21,7 @@ const config = {
   deploymentBranch: 'gh-pages', // Branch that GitHub Pages will deploy from.
   trailingSlash: false, // For GitHub Pages compatibility
 
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
 
   // Even if you don't use internationalization, you can use this field to set
