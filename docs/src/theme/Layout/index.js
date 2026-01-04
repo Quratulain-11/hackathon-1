@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import OriginalLayout from '@theme-original/Layout';
-import SafeChatbot from '../../components/Chatbot/SafeChatbot';
+import SafeChatbot from '@site/src/components/Chatbot/SafeChatbot';
 
 export default function Layout(props) {
   return (
