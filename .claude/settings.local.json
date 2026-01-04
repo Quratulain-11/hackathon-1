@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python -m src.rag_pipeline.cli.main test_run --docs-path docs/docs)",
-      "Bash(pip show python-frontmatter)"
+      "Bash(pip show python-frontmatter)",
+      "Bash(git add .)",
+      "Bash(git commit -m \"Fix Vercel deployment issues for frontend-backend integration\n\n- Update backend URL configuration to support environment variables\n- Create Vercel API route proxy to handle CORS issues\n- Update vercel.json to properly handle both static and API routes\n- Add documentation for Vercel deployment\n- Update task tracking to reflect completed integration tasks\n\nThese changes resolve all Vercel deployment issues for the chatbot integration.\")"
     ]
   }
 }

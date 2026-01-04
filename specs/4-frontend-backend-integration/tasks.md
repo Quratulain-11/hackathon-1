@@ -44,7 +44,7 @@ Implement the frontend-backend integration in phases following user story priori
 - [ ] T007 [P] Implement ChatWidget container with state management in docs/src/components/Chatbot/ChatWidget.tsx
 - [ ] T008 [P] Add message list rendering (user + assistant roles) in docs/src/components/Chatbot/MessageList.tsx
 - [ ] T009 [P] Implement frontend API client for POST /chat in docs/src/components/Chatbot/api/client.ts
-- [ ] T010 [P] Add environment-based backend URL configuration in docs/src/components/Chatbot/config.ts
+- [X] T010 [P] Add environment-based backend URL configuration in docs/src/components/Chatbot/config.ts
 
 ---
 
@@ -58,7 +58,7 @@ Implement the frontend-backend integration in phases following user story priori
 1. Given I am on any documentation page in the Docusaurus book, When I view the page, Then I see the chatbot UI component embedded in the page
 2. Given I am reading documentation content, When I want to ask a question about the content, Then I can use the chatbot without leaving the current page
 
-- [ ] T011 [US1] Inject ChatWidget into Docusaurus theme Layout in src/theme/Layout/index.js
+- [X] T011 [US1] Inject ChatWidget into Docusaurus theme Layout in src/theme/Layout/index.js
 - [ ] T012 [P] [US1] Ensure chatbot renders on all pages by testing multiple documentation pages
 - [ ] T013 [P] [US1] Configure component placement (floating widget at bottom right) for non-intrusive access
 - [ ] T014 [P] [US1] Add basic styling to match Docusaurus theme aesthetics
@@ -127,7 +127,7 @@ Implement the frontend-backend integration in phases following user story priori
 - [ ] T043 [P] Validate that chatbot UI appears on 100% of documentation pages per SC-001
 - [ ] T044 [P] Validate that 95% of queries reach backend within 10 seconds per SC-002
 - [ ] T045 [P] Validate that all error states are handled with appropriate feedback per SC-003
-- [ ] T046 [P] Test backend URL configuration via environment variables per SC-004
+- [X] T046 [P] Test backend URL configuration via environment variables per SC-004
 - [ ] T047 [P] Confirm no markdown files need modification per SC-005
 - [ ] T048 [P] Test edge cases from spec (empty queries, unavailable backend, etc.)
 - [ ] T049 [P] Document validation outcomes and recommendations
