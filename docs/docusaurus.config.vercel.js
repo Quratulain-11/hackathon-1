@@ -10,7 +10,7 @@ const config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://your-vercel-project-url.vercel.app', // Updated for Vercel deployment
+  url: 'https://your-vercel-url.vercel.app', // Vercel deployment URL
   // Set the /<baseUrl>/ pathname under which your site is served
   // For Vercel: use '/' for root deployment
   baseUrl: '/',
