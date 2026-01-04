@@ -1,14 +1,36 @@
 // Vercel API route to proxy requests to the backend
 // This helps avoid CORS issues when deployed to Vercel
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // Determine allowed origin based on environment
+  const allowedOrigin = process.env.ALLOWED_ORIGIN ||
+                        process.env.NEXT_PUBLIC_ALLOWED_ORIGIN ||
+                        process.env.VERCEL_URL ?
+                        `https://${process.env.VERCEL_URL}` :
+                        req.headers.origin || '*';
+
+  // Enable CORS with specific origin
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  // Only allow POST requests (for actual chat requests)
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     // Get the backend URL from environment variables
-    const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || 'https://nainee-chatbot.hf.space';
+    const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
     // Forward the request to the backend
     const response = await fetch(`${backendUrl}/api/v1/chat`, {
