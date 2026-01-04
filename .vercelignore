@@ -1,0 +1,14 @@
+# Vercel ignore file to prevent processing backend files
+backend/
+*.py
+*.pyc
+__pycache__/
+venv/
+.env
+.env.local
+.env.production
+node_modules/
+!docs/node_modules/
+*.lock
+Dockerfile
+docker-compose.yml
