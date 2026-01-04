@@ -1,13 +1,11 @@
 {
-  "github": {
-    "silent": true
-  },
   "builds": [
     {
       "src": "docs/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "build"
+        "distDir": "build",
+        "buildCommand": "cd docs && npm install && npm run build"
       }
     }
   ],
@@ -16,5 +14,8 @@
       "src": "/(.*)",
       "dest": "/$1"
     }
-  ]
+  ],
+  "github": {
+    "silent": true
+  }
 }
