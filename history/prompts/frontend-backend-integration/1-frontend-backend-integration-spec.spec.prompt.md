@@ -48,7 +48,7 @@ Success criteria:
 Technical constraints:
 - Frontend built using Docusaurus (React + TypeScript)
 - Chatbot UI lives inside docs/src/components
-- Backend accessed via HTTP (local-first: http://localhost:8000)
+- Backend accessed via HTTP (deployed: https://nainee-chatbot.hf.space)
 - No direct OpenAI / Cohere calls from frontend
 - No authentication in this phase
 

@@ -188,3 +188,14 @@ LPT*
 
 # Qdrant runtime lock file
 qdrant_data/.lock
+
+# Backend artifacts to exclude from frontend deployment
+backend/
+pyproject.toml
+uv.lock
+qdrant_data/
+*.py
+*.pyc
+*.pyo
+__pycache__/
+*.pyd

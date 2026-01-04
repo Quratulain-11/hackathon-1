@@ -48,21 +48,21 @@ pip install fastapi uvicorn
 uvicorn src.rag_pipeline.api.main:app --reload --port 8000
 ```
 
-The API will be available at `http://localhost:8000`.
+The API will be available at `https://nainee-chatbot.hf.space`.
 
 ### 2. Access API Documentation
 
 FastAPI automatically provides interactive API documentation:
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- Swagger UI: `https://nainee-chatbot.hf.space/docs`
+- ReDoc: `https://nainee-chatbot.hf.space/redoc`
 
 ## Using the Chat Endpoint
 
 ### 1. Send a Query via cURL
 
 ```bash
-curl -X POST http://localhost:8000/chat \
+curl -X POST https://nainee-chatbot.hf.space/chat \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is the ROS 2 nervous system architecture?",
@@ -77,7 +77,7 @@ curl -X POST http://localhost:8000/chat \
 import requests
 
 response = requests.post(
-    "http://localhost:8000/chat",
+    "https://nainee-chatbot.hf.space/chat",
     json={
         "query": "What is the ROS 2 nervous system architecture?",
         "top_k": 5,
@@ -133,8 +133,8 @@ The API returns responses in the following format:
 
 ### Verification Steps
 
-1. Check API health: `curl http://localhost:8000/health`
-2. Verify API documentation loads at `http://localhost:8000/docs`
+1. Check API health: `curl https://nainee-chatbot.hf.space/health`
+2. Verify API documentation loads at `https://nainee-chatbot.hf.space/docs`
 3. Test with a simple query to ensure basic functionality
 
 ## Next Steps

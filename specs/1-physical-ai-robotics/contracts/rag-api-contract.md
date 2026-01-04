@@ -4,6 +4,7 @@
 This document defines the API contract for the Retrieval-Augmented Generation (RAG) system that will be embedded in the Physical AI & Humanoid Robotics book. The RAG system provides content-specific Q&A functionality without hallucination.
 
 ## Base URL
+`https://nainee-chatbot.hf.space/api/v1` (deployed service)
 `http://localhost:8000/api/v1` (for local development)
 `https://[book-domain]/api/v1` (for production)
 

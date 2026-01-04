@@ -4,8 +4,8 @@
 
 The RAG (Retrieval-Augmented Generation) Chatbot is now successfully running! Here's what has been accomplished:
 
-✅ **API Server**: Running at `http://localhost:8000`
-✅ **API Documentation**: Available at `http://localhost:8000/docs`
+✅ **API Server**: Running at `https://nainee-chatbot.hf.space`
+✅ **API Documentation**: Available at `https://nainee-chatbot.hf.space/docs`
 ✅ **Qdrant Vector Database**: Running in local mode with file storage
 ✅ **Documentation**: Docusaurus documentation files identified and ready for processing
 
@@ -43,7 +43,7 @@ Once you have a Cohere API key and have processed the documentation:
 
 1. Send a test query using curl:
    ```bash
-   curl -X POST http://localhost:8000/api/v1/chat \
+   curl -X POST https://nainee-chatbot.hf.space/api/v1/chat \
      -H "Content-Type: application/json" \
      -d '{
        "query": "What is the ROS 2 nervous system architecture?",
@@ -52,7 +52,7 @@ Once you have a Cohere API key and have processed the documentation:
      }'
    ```
 
-2. Or use the API documentation interface at `http://localhost:8000/docs` to test interactively.
+2. Or use the API documentation interface at `https://nainee-chatbot.hf.space/docs` to test interactively.
 
 ## Troubleshooting
 

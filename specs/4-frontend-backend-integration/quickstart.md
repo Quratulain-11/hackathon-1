@@ -17,11 +17,11 @@ Before starting, ensure you have:
 
 ### 1. Backend Configuration
 
-Make sure your FastAPI backend is running and accessible. By default, the frontend expects the backend at `http://localhost:8000`. You can configure this with environment variables:
+Make sure your FastAPI backend is running and accessible. By default, the frontend expects the backend at `https://nainee-chatbot.hf.space`. You can configure this with environment variables:
 
 ```bash
 # .env file in your Docusaurus root
-REACT_APP_BACKEND_URL=http://localhost:8000
+REACT_APP_BACKEND_URL=https://nainee-chatbot.hf.space
 # or for production
 REACT_APP_BACKEND_URL=https://your-backend-domain.com
 ```
@@ -57,7 +57,7 @@ const Chatbot: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

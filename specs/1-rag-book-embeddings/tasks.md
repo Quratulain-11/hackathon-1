@@ -120,14 +120,14 @@ Implement the RAG embedding pipeline in phases following user story priorities. 
 **Goal**: Connect all components and validate the complete pipeline works as expected
 
 - [x] T039 [P] Integrate document processor, chunker, Cohere client, and Qdrant storage into unified pipeline
-- [ ] T040 [P] Process entire Docusaurus book content through the pipeline (docs/docs/ directory)
-- [ ] T041 [P] Validate that 95% of Docusaurus book pages are successfully processed per SC-001
-- [ ] T042 [P] Measure that embedding generation completes within 10 minutes for 100 pages per SC-002
-- [ ] T043 [P] Validate that system can handle up to 1000 pages of content per SC-003
-- [ ] T044 [P] Verify 90% of Cohere API requests succeed without timeout per SC-004
-- [ ] T045 [P] Run sample queries against Qdrant to validate retrieval returns relevant results per SC-005
-- [ ] T046 [P] Test edge cases: unsupported file formats, API rate limits, Qdrant unavailability per spec edge cases
-- [ ] T047 [P] Implement manual update functionality for when Docusaurus content changes per FR-007
+- [x] T040 [P] Process entire Docusaurus book content through the pipeline (docs/docs/ directory)
+- [x] T041 [P] Validate that 95% of Docusaurus book pages are successfully processed per SC-001
+- [x] T042 [P] Measure that embedding generation completes within 10 minutes for 100 pages per SC-002
+- [x] T043 [P] Validate that system can handle up to 1000 pages of content per SC-003
+- [x] T044 [P] Verify 90% of Cohere API requests succeed without timeout per SC-004
+- [x] T045 [P] Run sample queries against Qdrant to validate retrieval returns relevant results per SC-005
+- [x] T046 [P] Test edge cases: unsupported file formats, API rate limits, Qdrant unavailability per spec edge cases
+- [x] T047 [P] Implement manual update functionality for when Docusaurus content changes per FR-007
 
 ---
 
@@ -135,16 +135,16 @@ Implement the RAG embedding pipeline in phases following user story priorities. 
 
 **Goal**: Add comprehensive tests and documentation to ensure quality and maintainability
 
-- [ ] T048 [P] Create unit tests for document processor in tests/unit/test_document_processor.py
-- [ ] T049 [P] Create unit tests for chunker in tests/unit/test_chunker.py
-- [ ] T050 [P] Create unit tests for Cohere client in tests/unit/test_cohere_client.py
-- [ ] T051 [P] Create unit tests for Qdrant client in tests/unit/test_qdrant_client.py
-- [ ] T052 [P] Create integration tests for the full pipeline in tests/integration/test_pipeline_integration.py
-- [ ] T053 [P] Create end-to-end tests with sample Docusaurus content in tests/integration/test_end_to_end.py
-- [ ] T054 [P] Add test fixtures with sample documentation in tests/fixtures/sample_docs/
-- [ ] T055 [P] Update quickstart guide in specs/1-rag-book-embeddings/quickstart.md with new CLI options
-- [ ] T056 [P] Document error handling and troubleshooting procedures
-- [ ] T057 [P] Create usage examples and API documentation
+- [x] T048 [P] Create unit tests for document processor in tests/unit/test_document_processor.py
+- [x] T049 [P] Create unit tests for chunker in tests/unit/test_chunker.py
+- [x] T050 [P] Create unit tests for Cohere client in tests/unit/test_cohere_client.py
+- [x] T051 [P] Create unit tests for Qdrant client in tests/unit/test_qdrant_client.py
+- [x] T052 [P] Create integration tests for the full pipeline in tests/integration/test_pipeline_integration.py
+- [x] T053 [P] Create end-to-end tests with sample Docusaurus content in tests/integration/test_end_to_end.py
+- [x] T054 [P] Add test fixtures with sample documentation in tests/fixtures/sample_docs/
+- [x] T055 [P] Update quickstart guide in specs/1-rag-book-embeddings/quickstart.md with new CLI options
+- [x] T056 [P] Document error handling and troubleshooting procedures
+- [x] T057 [P] Create usage examples and API documentation
 
 ---
 
@@ -152,12 +152,12 @@ Implement the RAG embedding pipeline in phases following user story priorities. 
 
 **Goal**: Add finishing touches, optimizations, and deployment considerations
 
-- [ ] T058 Add progress tracking and logging for long-running processes
-- [ ] T059 Implement checksum-based change detection for incremental updates
-- [ ] T060 Add command-line options for configuration (chunk size, model, collection name)
-- [ ] T061 Optimize performance for large document sets (batch processing, memory management)
-- [ ] T062 Add comprehensive error messages and user-friendly CLI output
-- [ ] T063 Create a setup script to simplify environment configuration
-- [ ] T064 Update project documentation with usage instructions
-- [ ] T065 Run final validation tests to confirm all success criteria are met
-- [ ] T066 Document any deviations from original plan and lessons learned
+- [x] T058 Add progress tracking and logging for long-running processes
+- [x] T059 Implement checksum-based change detection for incremental updates
+- [x] T060 Add command-line options for configuration (chunk size, model, collection name)
+- [x] T061 Optimize performance for large document sets (batch processing, memory management)
+- [x] T062 Add comprehensive error messages and user-friendly CLI output
+- [x] T063 Create a setup script to simplify environment configuration
+- [x] T064 Update project documentation with usage instructions
+- [x] T065 Run final validation tests to confirm all success criteria are met
+- [x] T066 Document any deviations from original plan and lessons learned
