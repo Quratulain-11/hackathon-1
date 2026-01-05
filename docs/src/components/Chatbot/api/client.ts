@@ -1,0 +1,131 @@
+/**
+ * API client for communicating with the backend /chat endpoint
+ */
+import { ChatRequest, ChatResponse } from '../types';
+import { BACKEND_CONFIG } from '../config';
+
+// Create a timeout promise
+const timeoutPromise = (ms) => {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Request timeout after ' + ms + 'ms')), ms);
+  });
+};
+
+export const sendMessage = async (query: string, maxRetries: number = 3): Promise<ChatResponse> => {
+  const request: ChatRequest = {
+    query,
+    top_k: 5, // Default to 5 top results
+    temperature: 0.7, // Default temperature
+    max_tokens: 500, // Default max tokens
+  };
+
+  // Determine the endpoint to use based on environment
+  // Use Vercel API route proxy when deployed to avoid CORS issues
+  const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+  const isNetlify = typeof window !== 'undefined' && window.location.hostname.includes('netlify.app');
+  const isProduction = typeof window !== 'undefined' && !window.location.hostname.includes('localhost');
+
+  // Use proxy API route when deployed to Vercel or other platforms to avoid CORS
+  const endpoint = (isVercel || isNetlify || (isProduction && !window.location.hostname.includes('github')))
+    ? '/api/chat'
+    : `${BACKEND_CONFIG.baseUrl}/api/v1/chat`;
+
+  // Retry mechanism for transient network errors
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      // Create the fetch promise
+      const fetchPromise = fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      // Race the fetch promise against the timeout
+      const response = await Promise.race([
+        fetchPromise,
+        timeoutPromise(30000) // 30 second timeout
+      ]);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.detail || `HTTP error! status: ${response.status}`;
+
+        // Handle 429 specifically for rate limiting
+        if (response.status === 429) {
+          // Return a user-friendly message instead of throwing an error
+          return {
+            answer: "The system is temporarily busy. Please try again in a moment.",
+            sources: [],
+            query: request.query,
+            confidence: 0.0,
+            retrieval_time_ms: 0,
+            response_time_ms: 0,
+            timestamp: new Date().toISOString()
+          } as ChatResponse;
+        }
+        // Don't retry on 4xx client errors (except 429)
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          throw new Error(errorMessage);
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const data: ChatResponse = await response.json();
+      return data;
+    } catch (error) {
+      // If it's a timeout error
+      if (error instanceof Error && error.message.includes('timeout')) {
+        if (attempt === maxRetries) {
+          throw new Error('Request timed out. The backend is taking too long to respond.');
+        }
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        continue;
+      }
+
+      // Handle network errors that might be transient
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        if (attempt === maxRetries) {
+          throw new Error('Unable to connect to the backend. Please ensure the FastAPI server is running.');
+        }
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        continue;
+      }
+
+      // Handle 429 (Too Many Requests) errors with retry
+      if (error instanceof Error && error.message.includes('429')) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        continue;
+      }
+
+      // Handle other errors
+      if (error instanceof Error) {
+        // If it's the last attempt, throw the error
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        // Otherwise, wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        continue;
+      }
+
+      // If it's the last attempt, throw the error
+      if (attempt === maxRetries) {
+        throw new Error('An unknown error occurred while sending the message.');
+      }
+      // Otherwise, wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+    }
+  }
+
+  // This line should never be reached due to the return statements above
+  throw new Error('Unexpected error in sendMessage function');
+};

@@ -1,0 +1,13 @@
+{
+  "name": "@site/chatbot",
+  "version": "1.0.0",
+  "description": "RAG Chatbot component for Docusaurus documentation site",
+  "main": "index.tsx",
+  "types": "index.tsx",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["docusaurus", "chatbot", "rag", "documentation"],
+  "author": "Spec-Driven Development Agent",
+  "license": "MIT"
+}
