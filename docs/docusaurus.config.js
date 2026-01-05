@@ -87,19 +87,19 @@ const config = {
             items: [
               {
                 label: 'Module 1: ROS 2 Nervous System',
-                to: '/docs/module-1-ros-nervous-system/intro',
+                to: '/docs/module-1-ros-nervous-system/',
               },
               {
                 label: 'Module 2: Digital Twin',
-                to: '/docs/module-2-digital-twin/intro',
+                to: '/docs/module-2-digital-twin/',
               },
               {
                 label: 'Module 3: AI-Robot Brain',
-                to: '/docs/module-3-ai-robot-brain/intro',
+                to: '/docs/module-3-ai-robot-brain/',
               },
               {
                 label: 'Module 4: Vision-Language-Action',
-                to: '/docs/module-4-vision-language-action/intro',
+                to: '/docs/module-4-vision-language-action/',
               },
             ],
           },
