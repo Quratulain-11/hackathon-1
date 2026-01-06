@@ -2,26 +2,16 @@
  * Styles for the Chatbot component
  */
 
-.docusaurus-chatbot {
-  position: relative;
-  z-index: 1000;
-}
-
-.chat-widget {
+/* Chatbot toggle button */
+.chatbot-toggle-button {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.chat-button {
   width: 60px;
   height: 60px;
   border-radius: 50%;
   border: none;
-  background-color: #1b1b1d; /* Dark theme color similar to Docusaurus */
+  background-color: #1b1b1d;
   color: white;
   cursor: pointer;
   display: flex;
@@ -29,24 +19,25 @@
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
-  z-index: 1001;
+  z-index: 1000;
+  font-size: 24px;
 }
 
-.chat-button:hover {
+.chatbot-toggle-button:hover {
   background-color: #333;
   transform: scale(1.05);
 }
 
-.chat-button--open {
-  background-color: #e9669e; /* Accent color */
-}
-
-.chat-button svg {
+.chatbot-toggle-button svg {
   width: 24px;
   height: 24px;
 }
 
-.chat-panel {
+/* Chatbot container */
+.chatbot-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
   width: 380px;
   height: 500px;
   background: white;
@@ -55,33 +46,68 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin-bottom: 15px;
-  animation: slideIn 0.3s ease-out;
+  z-index: 1000;
+  transition: all 0.3s ease;
 }
 
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Minimized state */
+.chatbot-container.minimized {
+  height: 60px;
+  width: 300px;
 }
 
-.chat-header {
+/* Chatbot header */
+.chatbot-header {
   background-color: #1b1b1d;
   color: white;
   padding: 15px;
   font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-.chat-header h3 {
-  margin: 0;
+.chatbot-title {
   font-size: 16px;
+  margin: 0;
 }
 
+.chatbot-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.chatbot-minimize,
+.chatbot-close {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 18px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+
+.chatbot-minimize:hover,
+.chatbot-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Chatbot content */
+.chatbot-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Messages container */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -130,6 +156,29 @@
   line-height: 1.4;
 }
 
+.message-sources {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+}
+
+.message-sources summary {
+  cursor: pointer;
+  color: #1b1b1d;
+  font-weight: 500;
+}
+
+.message-sources ul {
+  margin: 5px 0 0 0;
+  padding-left: 15px;
+}
+
+.message-sources li {
+  margin: 3px 0;
+  font-size: 11px;
+  color: #777;
+}
+
 .message-timestamp {
   font-size: 10px;
   color: #888;
@@ -137,11 +186,13 @@
   text-align: right;
 }
 
+/* Input form */
 .chat-input-form {
   display: flex;
   padding: 12px;
   background-color: white;
   border-top: 1px solid #e0e0e0;
+  flex-shrink: 0;
 }
 
 .chat-input {
@@ -196,32 +247,35 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .chat-panel {
-    width: 320px;
-    height: 400px;
+  .chatbot-container {
+    width: calc(100% - 40px);
+    height: calc(100vh - 40px);
+    bottom: 20px;
+    right: 20px;
+  }
+
+  .chatbot-container.minimized {
+    width: calc(100% - 40px);
+    height: 60px;
+  }
+
+  .chatbot-toggle-button {
+    width: 50px;
+    height: 50px;
+    bottom: 15px;
+    right: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chatbot-container {
+    width: calc(100% - 20px);
+    height: calc(100vh - 20px);
     bottom: 10px;
     right: 10px;
   }
 
-  .message {
-    max-width: 90%;
+  .chatbot-container.minimized {
+    width: calc(100% - 20px);
   }
-}
-
-/* Scrollbar styling */
-.chat-messages::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-messages::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
 }

@@ -1,29 +1,9 @@
 {
-  "builds": [
+  "version": 2,
+  "rewrites": [
     {
-      "src": "docs/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build",
-        "buildCommand": "cd docs && npm ci && npm run build"
-      }
-    },
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
+      "source": "/api/chat",
+      "destination": "/api/chat"
     }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ],
-  "github": {
-    "silent": true
-  }
+  ]
 }

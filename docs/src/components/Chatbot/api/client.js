@@ -1,7 +1,6 @@
 /**
- * API client for communicating with the backend /chat endpoint
+ * API client for communicating with the Hugging Face Spaces backend
  */
-import { ChatRequest, ChatResponse } from '../types';
 import { BACKEND_CONFIG } from '../config';
 
 // Create a timeout promise
@@ -11,8 +10,8 @@ const timeoutPromise = (ms) => {
   });
 };
 
-export const sendMessage = async (query: string, maxRetries: number = 3): Promise<ChatResponse> => {
-  const request: ChatRequest = {
+export const sendMessage = async (query, maxRetries = 3) => {
+  const request = {
     query,
     top_k: 5, // Default to 5 top results
     temperature: 0.7, // Default temperature
@@ -26,18 +25,21 @@ export const sendMessage = async (query: string, maxRetries: number = 3): Promis
   const isProduction = typeof window !== 'undefined' && !window.location.hostname.includes('localhost');
 
   // Use proxy API route when deployed to Vercel or other platforms to avoid CORS
+  // For Hugging Face Spaces, we need to use the proxy to avoid CORS issues
   const endpoint = (isVercel || isNetlify || (isProduction && !window.location.hostname.includes('github')))
-    ? '/api/chat'
-    : `${BACKEND_CONFIG.baseUrl}/api/v1/chat`;
+    ? '/api/chat'  // Use Vercel API route proxy
+    : `${BACKEND_CONFIG.baseUrl}/api/v1/chat`;  // Direct to Hugging Face
 
   // Retry mechanism for transient network errors
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // Create the fetch promise
+      // Create the fetch promise with proper error handling
       const fetchPromise = fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // Additional headers that might be needed for Hugging Face Spaces
+          'Accept': 'application/json',
         },
         body: JSON.stringify(request),
       });
@@ -63,19 +65,23 @@ export const sendMessage = async (query: string, maxRetries: number = 3): Promis
             retrieval_time_ms: 0,
             response_time_ms: 0,
             timestamp: new Date().toISOString()
-          } as ChatResponse;
+          };
         }
         // Don't retry on 4xx client errors (except 429)
         if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          console.error('Client error:', errorMessage);
           throw new Error(errorMessage);
         }
 
+        console.error('Server error:', errorMessage);
         throw new Error(errorMessage);
       }
 
-      const data: ChatResponse = await response.json();
+      const data = await response.json();
       return data;
     } catch (error) {
+      console.error('Fetch error (attempt ' + attempt + '):', error.message);
+
       // If it's a timeout error
       if (error instanceof Error && error.message.includes('timeout')) {
         if (attempt === maxRetries) {
@@ -89,7 +95,7 @@ export const sendMessage = async (query: string, maxRetries: number = 3): Promis
       // Handle network errors that might be transient
       if (error instanceof TypeError && error.message.includes('fetch')) {
         if (attempt === maxRetries) {
-          throw new Error('Unable to connect to the backend. Please ensure the FastAPI server is running.');
+          throw new Error('Unable to connect to the backend. Please ensure the Hugging Face Spaces backend is running.');
         }
         // Wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -110,6 +116,7 @@ export const sendMessage = async (query: string, maxRetries: number = 3): Promis
       if (error instanceof Error) {
         // If it's the last attempt, throw the error
         if (attempt === maxRetries) {
+          console.error('Final error after retries:', error.message);
           throw error;
         }
         // Otherwise, wait before retrying (exponential backoff)
