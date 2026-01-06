@@ -12,7 +12,7 @@ const config = {
   // Set the production url of your site here
   url: 'https://hackathon-1-o3om.vercel.app', // Vercel deployment URL
   // Set the /<baseUrl>/ pathname under which your site is served
-  // For Vercel root deployment: use '/'
+  // For deployment in docs subdirectory served from root: use '/'
   baseUrl: '/',
 
   // Vercel deployment configuration
