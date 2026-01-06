@@ -10,16 +10,16 @@ const config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://aa.github.io', // This will be overridden by Vercel
+  url: 'https://hackathon-1-o3om.vercel.app', // Vercel deployment URL
   // Set the /<baseUrl>/ pathname under which your site is served
-  // For Vercel: use '/' for root deployment
+  // For Vercel root deployment: use '/'
   baseUrl: '/',
 
-  // GitHub pages deployment config.
-  organizationName: 'AA', // Usually your GitHub org/user name.
-  projectName: 'physical-ai-humanoid-robotics', // Usually your repo name.
-  deploymentBranch: 'gh-pages', // Branch that GitHub Pages will deploy from.
-  trailingSlash: false, // For GitHub Pages compatibility
+  // Vercel deployment configuration
+  organizationName: 'Quratulain-11', // GitHub username for Vercel deployment
+  projectName: 'hackathon-1', // GitHub repository name
+  deploymentBranch: 'main', // Branch that Vercel deploys from
+  trailingSlash: undefined, // Let Docusaurus handle trailing slashes for Vercel
 
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
@@ -44,7 +44,7 @@ const config = {
           // Please change this to your repo.
           // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
+            'https://github.com/Quratulain-11/hackathon-1/edit/main/docs/',
         },
         blog: false, // Disable blog if not needed
         theme: {
@@ -73,7 +73,7 @@ const config = {
             label: 'Book',
           },
           {
-            href: 'https://github.com/facebook/docusaurus',
+            href: 'https://github.com/Quratulain-11/hackathon-1',
             label: 'GitHub',
             position: 'right',
           },
@@ -125,7 +125,7 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/facebook/docusaurus',
+                href: 'https://github.com/Quratulain-11/hackathon-1',
               },
             ],
           },
