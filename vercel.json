@@ -8,16 +8,21 @@
         "distDir": "docs/build",
         "buildCommand": "cd docs && npm run build"
       }
+    },
+    {
+      "src": "api/chat.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/api/$1.js"
+      "dest": "/api/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/$1"
+      "dest": "/$1",
+      "check": true
     }
   ]
 }
