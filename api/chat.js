@@ -32,33 +32,42 @@ export default async function handler(req, res) {
     // Get the backend URL from environment variables
     const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
-    // Try the documented endpoint first
+    // Try the documented endpoint first: /api/v1/chat
     let response;
     let endpointUrl = `${backendUrl}/api/v1/chat`;
+    let requestHeaders = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': 'Vercel-Proxy/1.0'
+    };
 
-    response = await fetch(endpointUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'Vercel-Proxy/1.0'
-      },
-      body: JSON.stringify(req.body),
-    });
+    try {
+      response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify(req.body),
+      });
+    } catch (fetchError) {
+      console.error(`Failed to reach backend at ${endpointUrl}:`, fetchError.message);
+      // If the first endpoint fails completely, try the fallback
+      endpointUrl = `${backendUrl}/chat`;
+      response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify(req.body),
+      });
+    }
 
     // If we get a 404 "Not Found" error or 405 "Method Not Allowed", try the root-level chat endpoint
     // This handles cases where Hugging Face Spaces expose APIs differently
     if (response.status === 404 || response.status === 405) {
       const errorText = await response.text();
+      console.log(`Backend returned ${response.status}: ${errorText}`);
       if (errorText.includes('Not Found') || response.status === 404 || response.status === 405) {
         endpointUrl = `${backendUrl}/chat`;
         response = await fetch(endpointUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'Vercel-Proxy/1.0'
-          },
+          headers: requestHeaders,
           body: JSON.stringify(req.body),
         });
       }
