@@ -33,30 +33,15 @@ export default async function handler(req, res) {
     const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
     // Forward the request to the backend
-    // First try the documented endpoint
-    let response;
-    let apiUrl = `${backendUrl}/api/v1/chat`;
-
-    // Try the documented endpoint first
-    response = await fetch(`${backendUrl}/api/v1/chat`, {
+    // Forward the request to the backend using the correct endpoint
+    // Based on the OpenAPI specification from the Hugging Face Space
+    const response = await fetch(`${backendUrl}/api/v1/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(req.body),
     });
-
-    // If we get a 404, try the simplified endpoint (common in Hugging Face Spaces)
-    if (response.status === 404) {
-      apiUrl = `${backendUrl}/chat`;
-      response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(req.body),
-      });
-    }
 
     // Get the response from the backend
     const data = await response.json();
