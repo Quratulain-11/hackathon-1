@@ -37,29 +37,17 @@ export default async function handler(req, res) {
     let response;
     let apiUrl = `${backendUrl}/api/v1/chat`;
 
-    try {
-      response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(req.body),
-      });
+    // Try the documented endpoint first
+    response = await fetch(`${backendUrl}/api/v1/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body),
+    });
 
-      // If we get a 404 or "Not Found", try the alternative endpoint
-      if (response.status === 404) {
-        // Try the endpoint without the /api/v1 prefix (for some Hugging Face deployments)
-        apiUrl = `${backendUrl}/chat`;
-        response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(req.body),
-        });
-      }
-    } catch (initialError) {
-      // If the initial request failed completely, try the alternative endpoint
+    // If we get a 404, try the simplified endpoint (common in Hugging Face Spaces)
+    if (response.status === 404) {
       apiUrl = `${backendUrl}/chat`;
       response = await fetch(apiUrl, {
         method: 'POST',
