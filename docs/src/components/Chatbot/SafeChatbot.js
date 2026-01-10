@@ -16,33 +16,43 @@ const SafeChatbot = () => {
 
   // Toggle chatbot visibility
   const toggleChatbot = () => {
-    setIsVisible(!isVisible);
-    if (!isVisible) {
-      setIsMinimized(false);
-      // Add welcome message when opening
-      if (messages.length === 0) {
-        setMessages([
-          {
-            id: 'welcome',
-            role: 'assistant',
-            content: 'Hello! I\'m your documentation assistant. Ask me anything about the Physical AI & Humanoid Robotics book.',
-            timestamp: new Date(),
-          },
-        ]);
+    setIsVisible(prevIsVisible => {
+      const newIsVisible = !prevIsVisible;
+
+      if (!prevIsVisible) {
+        // We're opening the chatbot
+        setIsMinimized(false);
+
+        // Use callback form to ensure we have the current messages state
+        setMessages(prevMessages => {
+          if (prevMessages.length === 0) {
+            return [
+              {
+                id: 'welcome',
+                role: 'assistant',
+                content: 'Hello! I\'m your documentation assistant. Ask me anything about the Physical AI & Humanoid Robotics book.',
+                timestamp: new Date(),
+              },
+            ];
+          }
+          return prevMessages;
+        });
       }
-    }
+
+      return newIsVisible;
+    });
   };
 
   // Close chatbot
   const closeChatbot = () => {
     setIsVisible(false);
     setIsMinimized(false);
-    setMessages([]);
+    setMessages([]); // This is fine since we're resetting to an empty array
   };
 
   // Minimize/maximize chatbot
   const toggleMinimize = () => {
-    setIsMinimized(!isMinimized);
+    setIsMinimized(prev => !prev);
   };
 
   // Scroll to bottom of messages
@@ -61,7 +71,7 @@ const SafeChatbot = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [toggleChatbot]);
 
   // Handle form submission
   const handleSubmit = async (e) => {
