@@ -3,7 +3,7 @@
  */
 
 /* Chatbot toggle button */
-.chatbot-toggle-button {
+.chat-button {
   position: fixed;
   bottom: 20px;
   right: 20px;
@@ -23,21 +23,30 @@
   font-size: 24px;
 }
 
-.chatbot-toggle-button:hover {
+.chat-button:hover {
   background-color: #333;
   transform: scale(1.05);
 }
 
-.chatbot-toggle-button svg {
+.chat-button svg {
   width: 24px;
   height: 24px;
 }
 
-/* Chatbot container */
-.chatbot-container {
+.chat-button--open {
+  background-color: #333;
+}
+
+/* Chat widget container */
+.chat-widget {
   position: fixed;
   bottom: 20px;
   right: 20px;
+  z-index: 1000;
+}
+
+/* Chat panel */
+.chat-panel {
   width: 380px;
   height: 500px;
   background: white;
@@ -50,14 +59,8 @@
   transition: all 0.3s ease;
 }
 
-/* Minimized state */
-.chatbot-container.minimized {
-  height: 60px;
-  width: 300px;
-}
-
-/* Chatbot header */
-.chatbot-header {
+/* Chat panel header */
+.chat-header {
   background-color: #1b1b1d;
   color: white;
   padding: 15px;
@@ -66,45 +69,6 @@
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
-}
-
-.chatbot-title {
-  font-size: 16px;
-  margin: 0;
-}
-
-.chatbot-controls {
-  display: flex;
-  gap: 10px;
-}
-
-.chatbot-minimize,
-.chatbot-close {
-  background: none;
-  border: none;
-  color: white;
-  cursor: pointer;
-  font-size: 18px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-  transition: background-color 0.2s;
-}
-
-.chatbot-minimize:hover,
-.chatbot-close:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Chatbot content */
-.chatbot-content {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
 }
 
 /* Messages container */
@@ -247,19 +211,14 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .chatbot-container {
+  .chat-panel {
     width: calc(100% - 40px);
     height: calc(100vh - 40px);
     bottom: 20px;
     right: 20px;
   }
 
-  .chatbot-container.minimized {
-    width: calc(100% - 40px);
-    height: 60px;
-  }
-
-  .chatbot-toggle-button {
+  .chat-button {
     width: 50px;
     height: 50px;
     bottom: 15px;
@@ -268,14 +227,10 @@
 }
 
 @media (max-width: 480px) {
-  .chatbot-container {
+  .chat-panel {
     width: calc(100% - 20px);
     height: calc(100vh - 20px);
     bottom: 10px;
     right: 10px;
-  }
-
-  .chatbot-container.minimized {
-    width: calc(100% - 20px);
   }
 }
