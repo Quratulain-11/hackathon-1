@@ -35,66 +35,39 @@ export default async function handler(req, res) {
     console.log('Backend URL:', backendUrl);
     console.log('Request body:', req.body);
 
-    // Try multiple endpoint patterns with comprehensive error handling
-    const endpointsToTry = [
-      `${backendUrl}/api/v1/chat`,  // Standard documented endpoint
-      `${backendUrl}/chat`,         // Simplified endpoint
-      `${backendUrl}/query`,        // Alternative common endpoint
-      `${backendUrl}/ask`,          // Another common endpoint
-    ];
-
-    let response;
-    let success = false;
-    let lastError = null;
-
-    // Try each endpoint until one succeeds
-    for (const endpointUrl of endpointsToTry) {
-      try {
-        console.log(`Attempting to call: ${endpointUrl}`);
-
-        response = await fetch(endpointUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'Vercel-Proxy/1.0'
-          },
-          body: JSON.stringify(req.body),
-        });
-
-        console.log(`Response status from ${endpointUrl}: ${response.status}`);
-
-        // If we get a successful response (2xx), or a 429 (rate limit, which is expected), break the loop
-        if (response.status >= 200 && response.status < 300) {
-          success = true;
-          break;
+    // Hugging Face Spaces sometimes need to be "warmed up" - they return 405 initially
+    // Try to make a preliminary call to "warm up" the space if needed
+    const healthCheckUrl = `${backendUrl}/health`;
+    try {
+      console.log('Warming up Hugging Face Space with health check...');
+      await fetch(healthCheckUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Vercel-Proxy/1.0'
         }
-
-        // For 429 (rate limit), also consider it a success since it means the endpoint exists
-        if (response.status === 429) {
-          console.log('Rate limit response received - endpoint is accessible');
-          success = true;
-          break;
-        }
-
-        // Log non-successful responses for debugging
-        const errorText = await response.text();
-        console.log(`Endpoint ${endpointUrl} returned status ${response.status}: ${errorText}`);
-
-      } catch (fetchError) {
-        console.error(`Network error when calling ${endpointUrl}:`, fetchError.message);
-        lastError = fetchError;
-        continue; // Try the next endpoint
-      }
-    }
-
-    if (!success) {
-      // If all endpoints failed, return an error
-      return res.status(502).json({
-        error: 'Unable to connect to backend service',
-        details: lastError ? lastError.message : 'All endpoint attempts failed'
       });
+      // Wait a brief moment for the space to wake up
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (healthError) {
+      console.log('Health check failed (this is normal for some spaces):', healthError.message);
+      // Continue anyway as the health check is just for warming up
     }
+
+    // Now try the main chat endpoint - the documented one
+    const endpointUrl = `${backendUrl}/api/v1/chat`;
+    console.log(`Attempting to call main endpoint: ${endpointUrl}`);
+
+    const response = await fetch(endpointUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'Vercel-Proxy/1.0'
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    console.log(`Response status: ${response.status}`);
 
     // Get the response from the backend
     let data;
