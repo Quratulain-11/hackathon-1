@@ -41,21 +41,23 @@ export default async function handler(req, res) {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'User-Agent': 'Vercel-Proxy/1.0'
       },
       body: JSON.stringify(req.body),
     });
 
-    // If we get a 404 "Not Found" error, try the root-level chat endpoint
+    // If we get a 404 "Not Found" error or 405 "Method Not Allowed", try the root-level chat endpoint
     // This handles cases where Hugging Face Spaces expose APIs differently
-    if (response.status === 404) {
+    if (response.status === 404 || response.status === 405) {
       const errorText = await response.text();
-      if (errorText.includes('Not Found') || response.status === 404) {
+      if (errorText.includes('Not Found') || response.status === 404 || response.status === 405) {
         endpointUrl = `${backendUrl}/chat`;
         response = await fetch(endpointUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
+            'User-Agent': 'Vercel-Proxy/1.0'
           },
           body: JSON.stringify(req.body),
         });
