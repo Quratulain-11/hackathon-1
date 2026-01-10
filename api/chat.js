@@ -33,13 +33,45 @@ export default async function handler(req, res) {
     const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
     // Forward the request to the backend
-    const response = await fetch(`${backendUrl}/api/v1/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(req.body),
-    });
+    // First try the documented endpoint
+    let response;
+    let apiUrl = `${backendUrl}/api/v1/chat`;
+
+    try {
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(req.body),
+      });
+
+      // If we get a 404 or "Not Found", try the alternative endpoint
+      if (response.status === 404 || (response.status >= 400 && response.status < 500)) {
+        const errorBody = await response.text();
+        if (errorBody.includes('Not Found') || response.status === 404) {
+          // Try the endpoint without the /api/v1 prefix (for some Hugging Face deployments)
+          apiUrl = `${backendUrl}/chat`;
+          response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(req.body),
+          });
+        }
+      }
+    } catch (initialError) {
+      // If the initial request failed completely, try the alternative endpoint
+      apiUrl = `${backendUrl}/chat`;
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(req.body),
+      });
+    }
 
     // Get the response from the backend
     const data = await response.json();
