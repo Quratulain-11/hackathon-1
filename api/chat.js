@@ -32,19 +32,48 @@ export default async function handler(req, res) {
     // Get the backend URL from environment variables
     const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
-    // Forward the request to the backend
-    // Forward the request to the backend using the correct endpoint
-    // Based on the OpenAPI specification from the Hugging Face Space
-    const response = await fetch(`${backendUrl}/api/v1/chat`, {
+    // Try the documented endpoint first
+    let response;
+    let endpointUrl = `${backendUrl}/api/v1/chat`;
+
+    response = await fetch(endpointUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
       body: JSON.stringify(req.body),
     });
 
+    // If we get a 404 "Not Found" error, try the root-level chat endpoint
+    // This handles cases where Hugging Face Spaces expose APIs differently
+    if (response.status === 404) {
+      const errorText = await response.text();
+      if (errorText.includes('Not Found') || response.status === 404) {
+        endpointUrl = `${backendUrl}/chat`;
+        response = await fetch(endpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(req.body),
+        });
+      }
+    }
+
     // Get the response from the backend
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      // If response is not JSON (e.g., plain text error), return as is
+      const textResponse = await response.text();
+      return res.status(response.status).json({
+        error: textResponse,
+        status: response.status
+      });
+    }
 
     // Return the response from the backend
     // Use Math.min to ensure we don't return an invalid status code
@@ -52,6 +81,9 @@ export default async function handler(req, res) {
     res.status(statusCode).json(data);
   } catch (error) {
     console.error('Proxy error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 }
