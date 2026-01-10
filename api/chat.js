@@ -35,41 +35,81 @@ export default async function handler(req, res) {
     console.log('Backend URL:', backendUrl);
     console.log('Request body:', req.body);
 
-    // Hugging Face Spaces sometimes need to be "warmed up" - they return 405 initially
-    // Try to make a preliminary call to "warm up" the space if needed
-    const healthCheckUrl = `${backendUrl}/health`;
+    // First, check if the Hugging Face Space is accessible at all
     try {
-      console.log('Warming up Hugging Face Space with health check...');
-      await fetch(healthCheckUrl, {
+      console.log('Checking Hugging Face Space availability...');
+      const checkResponse = await fetch(backendUrl, {
         method: 'GET',
         headers: {
           'User-Agent': 'Vercel-Proxy/1.0'
         }
       });
-      // Wait a brief moment for the space to wake up
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } catch (healthError) {
-      console.log('Health check failed (this is normal for some spaces):', healthError.message);
-      // Continue anyway as the health check is just for warming up
+      console.log(`Space availability check status: ${checkResponse.status}`);
+    } catch (checkError) {
+      console.error('Failed to reach Hugging Face Space:', checkError.message);
+      return res.status(502).json({
+        error: 'Unable to reach backend service',
+        details: checkError.message
+      });
     }
 
-    // Now try the main chat endpoint - the documented one
+    // Try the documented endpoint: /api/v1/chat
     const endpointUrl = `${backendUrl}/api/v1/chat`;
-    console.log(`Attempting to call main endpoint: ${endpointUrl}`);
+    console.log(`Attempting to call: ${endpointUrl}`);
 
+    // Try with additional headers that might be required by Hugging Face
     const response = await fetch(endpointUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'User-Agent': 'Vercel-Proxy/1.0'
+        'User-Agent': 'Vercel-Proxy/1.0',
+        'Connection': 'keep-alive',
+        'Accept-Encoding': 'gzip, deflate, br'
       },
       body: JSON.stringify(req.body),
     });
 
     console.log(`Response status: ${response.status}`);
 
-    // Get the response from the backend
+    // If we get a 405, try to determine if it's a method issue or if the endpoint exists differently
+    if (response.status === 405) {
+      console.log('Received 405 error, trying alternative approach...');
+
+      // Try the /chat endpoint directly (without the /api/v1 prefix)
+      const altEndpointUrl = `${backendUrl}/chat`;
+      console.log(`Trying alternative endpoint: ${altEndpointUrl}`);
+
+      const altResponse = await fetch(altEndpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Vercel-Proxy/1.0'
+        },
+        body: JSON.stringify(req.body),
+      });
+
+      console.log(`Alternative endpoint response status: ${altResponse.status}`);
+
+      // Process the alternative response
+      let altData;
+      try {
+        altData = await altResponse.json();
+      } catch (parseError) {
+        const textResponse = await altResponse.text();
+        console.log('Alternative endpoint non-JSON response:', textResponse);
+        return res.status(altResponse.status).json({
+          error: textResponse,
+          status: altResponse.status
+        });
+      }
+
+      const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
+      return res.status(statusCode).json(altData);
+    }
+
+    // Process the original response
     let data;
     try {
       data = await response.json();
