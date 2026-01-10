@@ -45,7 +45,9 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     // Return the response from the backend
-    res.status(response.status).json(data);
+    // Use Math.min to ensure we don't return an invalid status code
+    const statusCode = Math.min(Math.max(response.status, 100), 599);
+    res.status(statusCode).json(data);
   } catch (error) {
     console.error('Proxy error:', error);
     res.status(500).json({ error: 'Internal server error' });
