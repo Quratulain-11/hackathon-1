@@ -32,45 +32,68 @@ export default async function handler(req, res) {
     // Get the backend URL from environment variables
     const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
-    // Try the documented endpoint first: /api/v1/chat
+    console.log('Backend URL:', backendUrl);
+    console.log('Request body:', req.body);
+
+    // Try multiple endpoint patterns with comprehensive error handling
+    const endpointsToTry = [
+      `${backendUrl}/api/v1/chat`,  // Standard documented endpoint
+      `${backendUrl}/chat`,         // Simplified endpoint
+      `${backendUrl}/query`,        // Alternative common endpoint
+      `${backendUrl}/ask`,          // Another common endpoint
+    ];
+
     let response;
-    let endpointUrl = `${backendUrl}/api/v1/chat`;
-    let requestHeaders = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'User-Agent': 'Vercel-Proxy/1.0'
-    };
+    let success = false;
+    let lastError = null;
 
-    try {
-      response = await fetch(endpointUrl, {
-        method: 'POST',
-        headers: requestHeaders,
-        body: JSON.stringify(req.body),
-      });
-    } catch (fetchError) {
-      console.error(`Failed to reach backend at ${endpointUrl}:`, fetchError.message);
-      // If the first endpoint fails completely, try the fallback
-      endpointUrl = `${backendUrl}/chat`;
-      response = await fetch(endpointUrl, {
-        method: 'POST',
-        headers: requestHeaders,
-        body: JSON.stringify(req.body),
-      });
-    }
+    // Try each endpoint until one succeeds
+    for (const endpointUrl of endpointsToTry) {
+      try {
+        console.log(`Attempting to call: ${endpointUrl}`);
 
-    // If we get a 404 "Not Found" error or 405 "Method Not Allowed", try the root-level chat endpoint
-    // This handles cases where Hugging Face Spaces expose APIs differently
-    if (response.status === 404 || response.status === 405) {
-      const errorText = await response.text();
-      console.log(`Backend returned ${response.status}: ${errorText}`);
-      if (errorText.includes('Not Found') || response.status === 404 || response.status === 405) {
-        endpointUrl = `${backendUrl}/chat`;
         response = await fetch(endpointUrl, {
           method: 'POST',
-          headers: requestHeaders,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Vercel-Proxy/1.0'
+          },
           body: JSON.stringify(req.body),
         });
+
+        console.log(`Response status from ${endpointUrl}: ${response.status}`);
+
+        // If we get a successful response (2xx), or a 429 (rate limit, which is expected), break the loop
+        if (response.status >= 200 && response.status < 300) {
+          success = true;
+          break;
+        }
+
+        // For 429 (rate limit), also consider it a success since it means the endpoint exists
+        if (response.status === 429) {
+          console.log('Rate limit response received - endpoint is accessible');
+          success = true;
+          break;
+        }
+
+        // Log non-successful responses for debugging
+        const errorText = await response.text();
+        console.log(`Endpoint ${endpointUrl} returned status ${response.status}: ${errorText}`);
+
+      } catch (fetchError) {
+        console.error(`Network error when calling ${endpointUrl}:`, fetchError.message);
+        lastError = fetchError;
+        continue; // Try the next endpoint
       }
+    }
+
+    if (!success) {
+      // If all endpoints failed, return an error
+      return res.status(502).json({
+        error: 'Unable to connect to backend service',
+        details: lastError ? lastError.message : 'All endpoint attempts failed'
+      });
     }
 
     // Get the response from the backend
@@ -80,6 +103,7 @@ export default async function handler(req, res) {
     } catch (parseError) {
       // If response is not JSON (e.g., plain text error), return as is
       const textResponse = await response.text();
+      console.log('Non-JSON response received:', textResponse);
       return res.status(response.status).json({
         error: textResponse,
         status: response.status
