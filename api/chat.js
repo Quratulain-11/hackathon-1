@@ -35,23 +35,42 @@ export default async function handler(req, res) {
     console.log('Backend URL:', backendUrl);
     console.log('Request body:', req.body);
 
-    // First, check if the Hugging Face Space is accessible at all
-    try {
-      console.log('Checking Hugging Face Space availability...');
-      const checkResponse = await fetch(backendUrl, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Vercel-Proxy/1.0'
+    // Function to warm up the Hugging Face Space
+    const warmUpSpace = async () => {
+      try {
+        console.log('Warming up Hugging Face Space...');
+
+        // Try the health endpoint first
+        const healthUrl = `${backendUrl}/health`;
+        const healthResponse = await fetch(healthUrl, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Vercel-Proxy/1.0'
+          }
+        });
+        console.log(`Health check status: ${healthResponse.status}`);
+
+        if (healthResponse.status === 405 || healthResponse.status === 404) {
+          // If health endpoint doesn't exist, try the root
+          const rootResponse = await fetch(backendUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Vercel-Proxy/1.0'
+            }
+          });
+          console.log(`Root check status: ${rootResponse.status}`);
         }
-      });
-      console.log(`Space availability check status: ${checkResponse.status}`);
-    } catch (checkError) {
-      console.error('Failed to reach Hugging Face Space:', checkError.message);
-      return res.status(502).json({
-        error: 'Unable to reach backend service',
-        details: checkError.message
-      });
-    }
+
+        // Wait a bit for the space to fully wake up
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (warmUpError) {
+        console.log('Warm-up attempt failed (this is normal for some spaces):', warmUpError.message);
+        // Continue anyway as the warm-up is just to help with cold starts
+      }
+    };
+
+    // Warm up the space before making the main request
+    await warmUpSpace();
 
     // Try the documented endpoint: /api/v1/chat
     const endpointUrl = `${backendUrl}/api/v1/chat`;
@@ -72,41 +91,79 @@ export default async function handler(req, res) {
 
     console.log(`Response status: ${response.status}`);
 
-    // If we get a 405, try to determine if it's a method issue or if the endpoint exists differently
+    // If we get a 405, it might be due to the space still not being ready, so try again after a delay
     if (response.status === 405) {
-      console.log('Received 405 error, trying alternative approach...');
+      console.log('Received 405 error, attempting retry after additional warm-up...');
 
-      // Try the /chat endpoint directly (without the /api/v1 prefix)
-      const altEndpointUrl = `${backendUrl}/chat`;
-      console.log(`Trying alternative endpoint: ${altEndpointUrl}`);
+      // Wait a bit more and try again
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
-      const altResponse = await fetch(altEndpointUrl, {
+      const retryResponse = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'Vercel-Proxy/1.0'
+          'User-Agent': 'Vercel-Proxy/1.0',
+          'Connection': 'keep-alive',
+          'Accept-Encoding': 'gzip, deflate, br'
         },
         body: JSON.stringify(req.body),
       });
 
-      console.log(`Alternative endpoint response status: ${altResponse.status}`);
+      console.log(`Retry response status: ${retryResponse.status}`);
 
-      // Process the alternative response
-      let altData;
-      try {
-        altData = await altResponse.json();
-      } catch (parseError) {
-        const textResponse = await altResponse.text();
-        console.log('Alternative endpoint non-JSON response:', textResponse);
-        return res.status(altResponse.status).json({
-          error: textResponse,
-          status: altResponse.status
+      if (retryResponse.status === 405) {
+        // If still getting 405, try alternative endpoints
+        console.log('Still receiving 405 error, trying alternative approaches...');
+
+        // Try the /chat endpoint (might be served without /api/v1 prefix in some deployments)
+        const altEndpointUrl = `${backendUrl}/chat`;
+        console.log(`Trying alternative endpoint: ${altEndpointUrl}`);
+
+        const altResponse = await fetch(altEndpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Vercel-Proxy/1.0'
+          },
+          body: JSON.stringify(req.body),
         });
-      }
 
-      const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
-      return res.status(statusCode).json(altData);
+        console.log(`Alternative endpoint response status: ${altResponse.status}`);
+
+        // Process the alternative response
+        let altData;
+        try {
+          altData = await altResponse.json();
+        } catch (parseError) {
+          const textResponse = await altResponse.text();
+          console.log('Alternative endpoint non-JSON response:', textResponse);
+          return res.status(altResponse.status).json({
+            error: textResponse,
+            status: altResponse.status
+          });
+        }
+
+        const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
+        return res.status(statusCode).json(altData);
+      } else {
+        // If retry worked, process normally
+        let retryData;
+        try {
+          retryData = await retryResponse.json();
+        } catch (parseError) {
+          const textResponse = await retryResponse.text();
+          console.log('Retry non-JSON response received:', textResponse);
+          return res.status(retryResponse.status).json({
+            error: textResponse,
+            status: retryResponse.status
+          });
+        }
+
+        const statusCode = Math.min(Math.max(retryResponse.status, 100), 599);
+        return res.status(statusCode).json(retryData);
+      }
     }
 
     // Process the original response

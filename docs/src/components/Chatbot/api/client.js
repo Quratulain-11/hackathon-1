@@ -52,7 +52,7 @@ export const sendMessage = async (query, maxRetries = 3) => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.detail || `HTTP error! status: ${response.status}`;
+        const errorMessage = errorData.detail || errorData.error || `HTTP error! status: ${response.status}`;
 
         // Handle 429 specifically for rate limiting
         if (response.status === 429) {
@@ -67,8 +67,15 @@ export const sendMessage = async (query, maxRetries = 3) => {
             timestamp: new Date().toISOString()
           };
         }
-        // Don't retry on 4xx client errors (except 429)
-        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+
+        // Handle 405 specifically - this often means the backend is not ready yet
+        if (response.status === 405) {
+          console.error('405 Method Not Allowed error - backend may not be fully ready:', errorMessage);
+          throw new Error(`Backend service not ready: ${errorMessage}. This may be a temporary issue with the Hugging Face Space waking up. Please try again in a moment.`);
+        }
+
+        // Don't retry on 4xx client errors (except 429 and 405 which are handled above)
+        if (response.status >= 400 && response.status < 500 && response.status !== 429 && response.status !== 405) {
           console.error('Client error:', errorMessage);
           throw new Error(errorMessage);
         }
