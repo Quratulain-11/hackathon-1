@@ -16,8 +16,10 @@ const SafeChatbot = () => {
 
   // Toggle chatbot visibility
   const toggleChatbot = () => {
+    console.log('Toggle chatbot clicked'); // Debug log
     setIsVisible(prevIsVisible => {
       const newIsVisible = !prevIsVisible;
+      console.log(`Setting isVisible to: ${newIsVisible}`); // Debug log
 
       if (!prevIsVisible) {
         // We're opening the chatbot
@@ -26,6 +28,7 @@ const SafeChatbot = () => {
         // Use callback form to ensure we have the current messages state
         setMessages(prevMessages => {
           if (prevMessages.length === 0) {
+            console.log('Adding welcome message'); // Debug log
             return [
               {
                 id: 'welcome',
@@ -45,6 +48,7 @@ const SafeChatbot = () => {
 
   // Close chatbot
   const closeChatbot = () => {
+    console.log('Close chatbot clicked');
     setIsVisible(false);
     setIsMinimized(false);
     setMessages([]); // This is fine since we're resetting to an empty array
@@ -52,6 +56,7 @@ const SafeChatbot = () => {
 
   // Minimize/maximize chatbot
   const toggleMinimize = () => {
+    console.log('Toggle minimize clicked');
     setIsMinimized(prev => !prev);
   };
 
@@ -65,6 +70,7 @@ const SafeChatbot = () => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
+        console.log('Keyboard shortcut triggered - toggling chatbot');
         toggleChatbot();
       }
     };
@@ -131,7 +137,12 @@ const SafeChatbot = () => {
       {!isVisible && (
         <button
           className="chatbot-toggle-button"
-          onClick={toggleChatbot}
+          onClick={(e) => {
+            console.log('Button clicked, calling toggleChatbot');
+            e.stopPropagation();
+            e.preventDefault();
+            toggleChatbot();
+          }}
           aria-label="Open chatbot"
           title="Open AI Assistant"
         >
