@@ -1,7 +1,7 @@
 /**
  * API client for communicating with the Hugging Face Spaces backend
  */
-import { BACKEND_CONFIG } from '../config';
+import { getBackendConfig } from '../config';
 
 // Create a timeout promise
 const timeoutPromise = (ms) => {
@@ -26,9 +26,10 @@ export const sendMessage = async (query, maxRetries = 3) => {
 
   // Use proxy API route when deployed to Vercel or other platforms to avoid CORS
   // For Hugging Face Spaces, we need to use the proxy to avoid CORS issues
+  const currentBackendConfig = getBackendConfig();
   const endpoint = (isVercel || isNetlify || (isProduction && !window.location.hostname.includes('github')))
     ? '/api/chat'  // Use Vercel API route proxy
-    : `${BACKEND_CONFIG.baseUrl}/api/v1/chat`;  // Direct to Hugging Face
+    : `${currentBackendConfig.baseUrl}/api/v1/chat`;  // Direct to Hugging Face
 
   // Retry mechanism for transient network errors
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

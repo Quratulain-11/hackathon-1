@@ -54,6 +54,10 @@ const config = {
     ],
   ],
 
+  customFields: {
+    backendUrl: process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'https://nainee-chatbot.hf.space',
+  },
+
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
