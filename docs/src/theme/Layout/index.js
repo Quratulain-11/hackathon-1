@@ -4,8 +4,7 @@
 import React from 'react';
 import OriginalLayout from '@theme-original/Layout';
 import { useDocusaurusContext } from '@docusaurus/core/hooks';
-import { initializeBackendConfig } from '@site/src/utils/backendConfig';
-import SafeChatbot from '../../components/Chatbot/SafeChatbot';
+import ChatbotPortal from '../../components/Chatbot/ChatbotPortal';
 
 export default function Layout(props) {
   const { siteConfig } = useDocusaurusContext();
@@ -13,23 +12,18 @@ export default function Layout(props) {
   // Initialize backend config with values from docusaurus.config.js
   React.useEffect(() => {
     if (siteConfig && siteConfig.customFields) {
-      initializeBackendConfig(siteConfig.customFields);
-    }
-  }, [siteConfig]);
-
-  // Inject backend config script
-  React.useEffect(() => {
-    if (siteConfig && siteConfig.customFields && typeof window !== 'undefined') {
-      window.__BACKEND_CONFIG__ = {
-        baseUrl: siteConfig.customFields.backendUrl || 'https://nainee-chatbot.hf.space'
-      };
+      if (siteConfig.customFields.backendUrl && typeof window !== 'undefined') {
+        window.__BACKEND_CONFIG__ = {
+          baseUrl: siteConfig.customFields.backendUrl
+        };
+      }
     }
   }, [siteConfig]);
 
   return (
     <>
       <OriginalLayout {...props} />
-      <SafeChatbot />
+      <ChatbotPortal />
     </>
   );
 }
