@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import OriginalLayout from '@theme-original/Layout';
-import { useDocusaurusContext } from '@docusaurus/core/hooks';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import { initializeBackendConfig } from '@site/src/utils/backendConfig';
 import ChatbotPortal from '../../components/Chatbot/ChatbotPortal';
 
