@@ -45,46 +45,8 @@ export default async function handler(req, res) {
     // Get the backend URL from environment variables
     const backendUrl = process.env.BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
-    console.log('=== DEBUG: Processing chat request ===');
     console.log('Backend URL:', backendUrl);
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-    console.log('Full request headers:', req.headers);
-
-    // Function to check if backend is accessible
-    const checkBackendAccessibility = async () => {
-      try {
-        const testResponse = await fetch(backendUrl, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Vercel-Proxy-Diagnostic/1.0',
-            'Accept': 'application/json,text/html,*/*'
-          }
-        });
-        console.log(`Backend accessibility test - Status: ${testResponse.status}`);
-
-        if (testResponse.status >= 200 && testResponse.status < 400) {
-          return true;
-        }
-        return false;
-      } catch (error) {
-        console.log(`Backend accessibility test failed:`, error.message);
-        return false;
-      }
-    };
-
-    // Check if backend is accessible before proceeding
-    const isAccessible = await checkBackendAccessibility();
-    if (!isAccessible) {
-      console.log('WARNING: Backend appears to be inaccessible');
-      return res.status(503).json({
-        error: 'Backend service unavailable',
-        details: 'The backend service is not accessible',
-        answer: "I'm currently unable to connect to my backend service. Please try again later.",
-        sources: [],
-        query: req.body.query || req.body.question || req.body.message || '',
-        message: 'Backend service is not accessible'
-      });
-    }
+    console.log('Request body:', req.body);
 
     // Function to warm up the Hugging Face Space with better error handling
     const warmUpSpace = async (maxRetries = 3) => {
@@ -117,7 +79,6 @@ export default async function handler(req, res) {
 
           if (healthResponse.status >= 200 && healthResponse.status < 300) {
             // Health check successful, space is ready
-            console.log('Health check successful, space is ready');
             return;
           } else if (healthResponse.status === 404 || healthResponse.status === 405) {
             // If health endpoint doesn't exist, try the root
@@ -131,7 +92,6 @@ export default async function handler(req, res) {
             console.log(`Root check status: ${rootResponse.status}`);
 
             if (rootResponse.status >= 200 && rootResponse.status < 300) {
-              console.log('Root is accessible, space is likely ready');
               return; // Root is accessible, space is likely ready
             }
           }
@@ -153,61 +113,139 @@ export default async function handler(req, res) {
     // Warm up the space before making the main request
     await warmUpSpace();
 
-    // Based on the logs, your backend appears to be a FastAPI application
-    // Let's try the most common FastAPI chat endpoints
-    const endpointsToTry = [
-      `${backendUrl}/api/v1/chat`,
-      `${backendUrl}/chat`,
-      `${backendUrl}/api/chat`,
-      `${backendUrl}/query`,
-      `${backendUrl}/rag/query`,
-      `${backendUrl}/ask`
-    ];
+    // Prepare the request body in the correct Hugging Face format
+    const userMessage = req.body.query || req.body.message || req.body.input || JSON.stringify(req.body);
+    const hfRequestBody = {
+      data: [userMessage]
+    };
 
-    let response = null;
-    let lastError = null;
-    let successfulEndpoint = null;
+    // Use the correct Hugging Face endpoint for predictions
+    const endpointUrl = `${backendUrl}/run/predict`;
+    console.log(`Attempting to call: ${endpointUrl}`);
+    console.log(`Sending request body:`, hfRequestBody);
 
-    // Try each endpoint in sequence
-    for (const endpointUrl of endpointsToTry) {
-      console.log(`Attempting to call: ${endpointUrl}`);
+    // Create a timeout promise for the fetch call
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000);
+    });
 
+    let response;
+    try {
+      // Race the fetch request against a timeout
+      const fetchPromise = fetch(endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'Vercel-Proxy/1.0',
+          'Connection': 'keep-alive',
+          'Accept-Encoding': 'gzip, deflate, br'
+        },
+        body: JSON.stringify(hfRequestBody),
+      });
+
+      response = await Promise.race([fetchPromise, timeoutPromise]);
+    } catch (networkError) {
+      console.error('Network error when calling backend:', networkError.message);
+      if (networkError.message.includes('timeout')) {
+        return res.status(200).json({
+          answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+          sources: [],
+          query: req.body.query || req.body.message || '',
+          message: "The backend service is experiencing issues. Our team has been notified."
+        });
+      }
+      return res.status(200).json({
+        answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+        sources: [],
+        query: req.body.query || req.body.message || '',
+        message: "The backend service is experiencing issues. Our team has been notified."
+      });
+    }
+
+    console.log(`Response status: ${response.status}`);
+
+    // Handle 404 - the /run/predict endpoint might not exist, try alternatives
+    if (response.status === 404) {
+      console.log('Received 404 error, trying alternative endpoints...');
+
+      // Try /api/predict endpoint as alternative
+      const altEndpointUrl = `${backendUrl}/api/predict`;
+      console.log(`Trying alternative endpoint: ${altEndpointUrl}`);
+
+      const altTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Alternative request timeout after 30 seconds')), 30000);
+      });
+
+      let altResponse;
       try {
-        // Create a timeout promise for the fetch call
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000);
+        // Race the fetch request against a timeout
+        const altFetchPromise = fetch(altEndpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Vercel-Proxy/1.0'
+          },
+          body: JSON.stringify(hfRequestBody),
         });
 
-        // Prepare the request body - adapt to what the backend expects
-        // If the original request has a 'query' field, use it as the main input
-        let requestBody;
-        if (req.body.query) {
-          // Standard format for RAG applications
-          requestBody = {
-            query: req.body.query,
-            top_k: req.body.top_k || 5,
-            temperature: req.body.temperature || 0.7,
-            max_tokens: req.body.max_tokens || 500
-          };
-        } else if (req.body.inputs || req.body.input) {
-          // Format for Hugging Face-style endpoints
-          requestBody = {
-            inputs: req.body.inputs || req.body.input,
-            parameters: {
-              top_k: req.body.top_k || 5,
-              temperature: req.body.temperature || 0.7,
-              max_tokens: req.body.max_tokens || 500
-            }
-          };
-        } else {
-          // Fallback: use original request body
-          requestBody = req.body;
-        }
+        altResponse = await Promise.race([altFetchPromise, altTimeoutPromise]);
+      } catch (networkError) {
+        console.error('Network error when calling alternative endpoint:', networkError.message);
+        return res.status(200).json({
+          answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+          sources: [],
+          query: req.body.query || req.body.message || '',
+          message: "The backend service is experiencing issues. Our team has been notified."
+        });
+      }
 
-        console.log(`Sending request body to ${endpointUrl}:`, JSON.stringify(requestBody, null, 2));
+      console.log(`Alternative endpoint response status: ${altResponse.status}`);
 
-        // Race the fetch request against a timeout
-        const fetchPromise = fetch(endpointUrl, {
+      // Process the alternative response
+      let altData;
+      try {
+        altData = await altResponse.json();
+      } catch (parseError) {
+        const textResponse = await altResponse.text();
+        console.log('Alternative endpoint non-JSON response:', textResponse);
+        return res.status(200).json({
+          answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+          sources: [],
+          query: req.body.query || req.body.message || '',
+          message: "The backend service is experiencing issues. Our team has been notified."
+        });
+      }
+
+      // Extract the result from the response
+      let answer = '';
+      if (altData && Array.isArray(altData.data)) {
+        answer = altData.data[0] || JSON.stringify(altData);
+      } else if (altData && typeof altData === 'object') {
+        // Try to find the answer in different possible fields
+        answer = altData.answer || altData.response || altData.result || altData.generated_text || JSON.stringify(altData);
+      } else {
+        answer = String(altData);
+      }
+
+      const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
+      console.log(`Returning response with status: ${statusCode}`);
+      return res.status(statusCode).json({
+        answer: answer,
+        sources: [],
+        query: req.body.query || req.body.message || ''
+      });
+    }
+    // Handle 405 - Method not allowed, try again after delay (common with cold starts)
+    else if (response.status === 405) {
+      console.log('Received 405 error, attempting retry after delay...');
+
+      // Wait a bit and try again (for cold start issues)
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      try {
+        const retryResponse = await fetch(endpointUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -216,152 +254,187 @@ export default async function handler(req, res) {
             'Connection': 'keep-alive',
             'Accept-Encoding': 'gzip, deflate, br'
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(hfRequestBody),
         });
 
-        response = await Promise.race([fetchPromise, timeoutPromise]);
+        console.log(`Retry response status: ${retryResponse.status}`);
 
-        console.log(`Response from ${endpointUrl}: status=${response.status}`);
+        if (retryResponse.status !== 405) {
+          // If retry worked, process normally
+          let retryData;
+          try {
+            retryData = await retryResponse.json();
+          } catch (parseError) {
+            const textResponse = await retryResponse.text();
+            console.log('Retry non-JSON response received:', textResponse);
+            return res.status(200).json({
+              answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+              sources: [],
+              query: req.body.query || req.body.message || '',
+              message: "The backend service is experiencing issues. Our team has been notified."
+            });
+          }
 
-        if (response.status !== 404 && response.status !== 405) {
-          // If we got a response that's not 404 or 405, break out of the loop
-          successfulEndpoint = endpointUrl;
-          console.log(`SUCCESS: Found working endpoint: ${endpointUrl}`);
-          break;
+          // Extract the result from the response
+          let answer = '';
+          if (retryData && Array.isArray(retryData.data)) {
+            answer = retryData.data[0] || JSON.stringify(retryData);
+          } else if (retryData && typeof retryData === 'object') {
+            // Try to find the answer in different possible fields
+            answer = retryData.answer || retryData.response || retryData.result || retryData.generated_text || JSON.stringify(retryData);
+          } else {
+            answer = String(retryData);
+          }
+
+          const statusCode = Math.min(Math.max(retryResponse.status, 100), 599);
+          console.log(`Returning response with status: ${statusCode} from retry`);
+          return res.status(statusCode).json({
+            answer: answer,
+            sources: [],
+            query: req.body.query || req.body.message || ''
+          });
         } else {
-          console.log(`Endpoint ${endpointUrl} returned ${response.status}, trying next...`);
-          lastError = `Endpoint ${endpointUrl} returned ${response.status}`;
-          response = null; // Reset response to try the next endpoint
-        }
-      } catch (networkError) {
-        console.error(`Network error when calling ${endpointUrl}:`, networkError.message);
-        lastError = `Network error calling ${endpointUrl}: ${networkError.message}`;
-        continue; // Try the next endpoint
-      }
-    }
-
-    // If no endpoint worked
-    if (!response) {
-      console.error('All endpoints failed:', lastError);
-
-      // Return a friendly error message instead of propagating the error
-      return res.status(500).json({
-        error: 'Backend service temporarily unavailable',
-        details: 'Could not connect to any available endpoint',
-        answer: "I'm currently unable to process your request. The backend service might be temporarily unavailable. Please try again in a moment.",
-        sources: [],
-        query: req.body.query || req.body.question || req.body.message || '',
-        message: 'The backend service is experiencing issues. Our team has been notified.'
-      });
-    }
-
-    console.log(`Final response status: ${response.status}`);
-    console.log(`Successful endpoint: ${successfulEndpoint}`);
-
-    // Handle 405 - Method not allowed, which was the original issue
-    if (response.status === 405) {
-      console.log('Received 405 error - returning friendly message');
-
-      return res.status(200).json({
-        answer: "I'm temporarily unable to process your request. Please try again in a moment.",
-        sources: [],
-        query: req.body.query || req.body.question || req.body.message || '',
-        message: "The backend service is experiencing issues. Our team has been notified."
-      });
-    }
-
-    // Handle other error statuses
-    else if (response.status >= 400) {
-      console.log(`Received error status ${response.status}, processing response...`);
-
-      let errorData;
-      try {
-        errorData = await response.json();
-        console.log(`Error response JSON:`, errorData);
-      } catch (parseError) {
-        const textResponse = await response.text();
-        console.log(`Error response (non-JSON): ${textResponse}`);
-
-        // For 405 specifically, return a friendly message
-        if (response.status === 405) {
+          // If still getting 405, return friendly message
           return res.status(200).json({
             answer: "I'm temporarily unable to process your request. Please try again in a moment.",
             sources: [],
-            query: req.body.query || req.body.question || req.body.message || '',
+            query: req.body.query || req.body.message || '',
             message: "The backend service is experiencing issues. Our team has been notified."
           });
         }
-
-        return res.status(response.status).json({
-          error: textResponse,
-          status: response.status
-        });
-      }
-
-      console.log(`Error response data:`, errorData);
-
-      // If it's a 405 error, return a friendly message instead of the error
-      if (response.status === 405) {
+      } catch (retryError) {
+        console.error('Retry failed:', retryError.message);
         return res.status(200).json({
           answer: "I'm temporarily unable to process your request. Please try again in a moment.",
           sources: [],
-          query: req.body.query || req.body.question || req.body.message || '',
+          query: req.body.query || req.body.message || '',
           message: "The backend service is experiencing issues. Our team has been notified."
         });
       }
+    }
+    // Handle other error statuses
+    else if (response.status >= 400) {
+      console.log(`Received error status ${response.status}, attempting retry...`);
 
-      return res.status(response.status).json(errorData);
+      // Try once more after a short delay (for temporary backend issues)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      try {
+        const retryResponse = await fetch(endpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Vercel-Proxy/1.0',
+            'Connection': 'keep-alive',
+            'Accept-Encoding': 'gzip, deflate, br'
+          },
+          body: JSON.stringify(hfRequestBody),
+        });
+
+        console.log(`Retry response status: ${retryResponse.status}`);
+
+        if (retryResponse.status < 400) {
+          // If retry worked, process normally
+          let retryData;
+          try {
+            retryData = await retryResponse.json();
+          } catch (parseError) {
+            const textResponse = await retryResponse.text();
+            console.log('Retry non-JSON response received:', textResponse);
+            return res.status(200).json({
+              answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+              sources: [],
+              query: req.body.query || req.body.message || '',
+              message: "The backend service is experiencing issues. Our team has been notified."
+            });
+          }
+
+          // Extract the result from the response
+          let answer = '';
+          if (retryData && Array.isArray(retryData.data)) {
+            answer = retryData.data[0] || JSON.stringify(retryData);
+          } else if (retryData && typeof retryData === 'object') {
+            // Try to find the answer in different possible fields
+            answer = retryData.answer || retryData.response || retryData.result || retryData.generated_text || JSON.stringify(retryData);
+          } else {
+            answer = String(retryData);
+          }
+
+          const statusCode = Math.min(Math.max(retryResponse.status, 100), 599);
+          console.log(`Returning response with status: ${statusCode} from retry`);
+          return res.status(statusCode).json({
+            answer: answer,
+            sources: [],
+            query: req.body.query || req.body.message || ''
+          });
+        } else {
+          // If retry also failed, return friendly message
+          return res.status(200).json({
+            answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+            sources: [],
+            query: req.body.query || req.body.message || '',
+            message: "The backend service is experiencing issues. Our team has been notified."
+          });
+        }
+      } catch (retryError) {
+        console.error('Retry failed:', retryError.message);
+        return res.status(200).json({
+          answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+          sources: [],
+          query: req.body.query || req.body.message || '',
+          message: "The backend service is experiencing issues. Our team has been notified."
+        });
+      }
     }
 
     // Process the successful response
     let data;
     try {
       data = await response.json();
-      console.log(`Successfully parsed response JSON:`, data);
     } catch (parseError) {
-      // If response is not JSON (e.g., plain text error), return as is
+      // If response is not JSON (e.g., plain text error), return friendly message
       const textResponse = await response.text();
       console.log('Non-JSON response received:', textResponse);
-
-      return res.status(response.status).json({
-        answer: textResponse,
+      return res.status(200).json({
+        answer: "I'm temporarily unable to process your request. Please try again in a moment.",
         sources: [],
-        query: req.body.query || req.body.question || req.body.message || '',
-        status: response.status
+        query: req.body.query || req.body.message || '',
+        message: "The backend service is experiencing issues. Our team has been notified."
       });
+    }
+
+    // Extract the result from the response (return result.data[0] as specified)
+    let answer = '';
+    if (data && Array.isArray(data.data)) {
+      answer = data.data[0] || JSON.stringify(data);
+    } else if (data && typeof data === 'object') {
+      // Try to find the answer in different possible fields
+      answer = data.answer || data.response || data.result || data.generated_text || JSON.stringify(data);
+    } else {
+      answer = String(data);
     }
 
     // Return the response from the backend
     // Use Math.min to ensure we don't return an invalid status code
     const statusCode = Math.min(Math.max(response.status, 100), 599);
     console.log(`Returning successful response with status: ${statusCode}`);
-
-    // Ensure the response matches the expected format for the frontend
-    const formattedResponse = {
-      answer: data.answer || data.response || data.result || data.generated_text || JSON.stringify(data),
-      sources: data.sources || data.source_documents || data.context || [],
-      query: req.body.query || req.body.question || req.body.message || '',
-      original_response: data
-    };
-
-    console.log(`Final formatted response:`, formattedResponse);
-    console.log('=== END DEBUG: Chat request processing ===');
-
-    res.status(statusCode).json(formattedResponse);
+    res.status(statusCode).json({
+      answer: answer,
+      sources: [],
+      query: req.body.query || req.body.message || ''
+    });
   } catch (error) {
-    console.error('=== ERROR DEBUG: Proxy error ===');
-    console.error('Full error:', error);
-    console.error('Error message:', error.message);
+    console.error('Proxy error:', error);
     console.error('Error stack:', error.stack);
-    console.error('===============================');
 
     // Return a friendly error message instead of propagating the error
-    res.status(500).json({
+    res.status(200).json({
       error: 'Backend service temporarily unavailable',
       details: 'Please try again in a moment',
       answer: "I'm currently unable to process your request. Please try again in a moment.",
       sources: [],
-      query: req.body?.query || req.body?.question || req.body?.message || '',
+      query: req.body?.query || req.body?.message || '',
       message: 'The backend service is experiencing issues. Our team has been notified.'
     });
   }
