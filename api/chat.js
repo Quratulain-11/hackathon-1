@@ -45,8 +45,46 @@ export default async function handler(req, res) {
     // Get the backend URL from environment variables
     const backendUrl = process.env.BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
+    console.log('=== DEBUG: Processing chat request ===');
     console.log('Backend URL:', backendUrl);
-    console.log('Request body:', req.body);
+    console.log('Request body:', JSON.stringify(req.body, null, 2));
+    console.log('Full request headers:', req.headers);
+
+    // Function to check if backend is accessible
+    const checkBackendAccessibility = async () => {
+      try {
+        const testResponse = await fetch(backendUrl, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Vercel-Proxy-Diagnostic/1.0',
+            'Accept': 'application/json,text/html,*/*'
+          }
+        });
+        console.log(`Backend accessibility test - Status: ${testResponse.status}`);
+
+        if (testResponse.status >= 200 && testResponse.status < 400) {
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.log(`Backend accessibility test failed:`, error.message);
+        return false;
+      }
+    };
+
+    // Check if backend is accessible before proceeding
+    const isAccessible = await checkBackendAccessibility();
+    if (!isAccessible) {
+      console.log('WARNING: Backend appears to be inaccessible');
+      return res.status(503).json({
+        error: 'Backend service unavailable',
+        details: 'The backend service is not accessible',
+        answer: "I'm currently unable to connect to my backend service. Please try again later.",
+        sources: [],
+        query: req.body.query || req.body.question || req.body.message || '',
+        message: 'Backend service is not accessible'
+      });
+    }
 
     // Function to warm up the Hugging Face Space with better error handling
     const warmUpSpace = async (maxRetries = 3) => {
@@ -79,6 +117,7 @@ export default async function handler(req, res) {
 
           if (healthResponse.status >= 200 && healthResponse.status < 300) {
             // Health check successful, space is ready
+            console.log('Health check successful, space is ready');
             return;
           } else if (healthResponse.status === 404 || healthResponse.status === 405) {
             // If health endpoint doesn't exist, try the root
@@ -92,6 +131,7 @@ export default async function handler(req, res) {
             console.log(`Root check status: ${rootResponse.status}`);
 
             if (rootResponse.status >= 200 && rootResponse.status < 300) {
+              console.log('Root is accessible, space is likely ready');
               return; // Root is accessible, space is likely ready
             }
           }
@@ -126,6 +166,7 @@ export default async function handler(req, res) {
 
     let response = null;
     let lastError = null;
+    let successfulEndpoint = null;
 
     // Try each endpoint in sequence
     for (const endpointUrl of endpointsToTry) {
@@ -163,6 +204,8 @@ export default async function handler(req, res) {
           requestBody = req.body;
         }
 
+        console.log(`Sending request body to ${endpointUrl}:`, JSON.stringify(requestBody, null, 2));
+
         // Race the fetch request against a timeout
         const fetchPromise = fetch(endpointUrl, {
           method: 'POST',
@@ -178,8 +221,12 @@ export default async function handler(req, res) {
 
         response = await Promise.race([fetchPromise, timeoutPromise]);
 
+        console.log(`Response from ${endpointUrl}: status=${response.status}`);
+
         if (response.status !== 404 && response.status !== 405) {
           // If we got a response that's not 404 or 405, break out of the loop
+          successfulEndpoint = endpointUrl;
+          console.log(`SUCCESS: Found working endpoint: ${endpointUrl}`);
           break;
         } else {
           console.log(`Endpoint ${endpointUrl} returned ${response.status}, trying next...`);
@@ -208,7 +255,8 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log(`Response status: ${response.status}`);
+    console.log(`Final response status: ${response.status}`);
+    console.log(`Successful endpoint: ${successfulEndpoint}`);
 
     // Handle 405 - Method not allowed, which was the original issue
     if (response.status === 405) {
@@ -225,9 +273,11 @@ export default async function handler(req, res) {
     // Handle other error statuses
     else if (response.status >= 400) {
       console.log(`Received error status ${response.status}, processing response...`);
+
       let errorData;
       try {
         errorData = await response.json();
+        console.log(`Error response JSON:`, errorData);
       } catch (parseError) {
         const textResponse = await response.text();
         console.log(`Error response (non-JSON): ${textResponse}`);
@@ -267,6 +317,7 @@ export default async function handler(req, res) {
     let data;
     try {
       data = await response.json();
+      console.log(`Successfully parsed response JSON:`, data);
     } catch (parseError) {
       // If response is not JSON (e.g., plain text error), return as is
       const textResponse = await response.text();
@@ -293,10 +344,16 @@ export default async function handler(req, res) {
       original_response: data
     };
 
+    console.log(`Final formatted response:`, formattedResponse);
+    console.log('=== END DEBUG: Chat request processing ===');
+
     res.status(statusCode).json(formattedResponse);
   } catch (error) {
-    console.error('Proxy error:', error);
+    console.error('=== ERROR DEBUG: Proxy error ===');
+    console.error('Full error:', error);
+    console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
+    console.error('===============================');
 
     // Return a friendly error message instead of propagating the error
     res.status(500).json({
