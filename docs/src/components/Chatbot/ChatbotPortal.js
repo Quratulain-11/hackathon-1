@@ -7,69 +7,56 @@ import { createPortal } from 'react-dom';
 
 // A self-contained chatbot loader that avoids circular dependencies
 const ChatbotPortal = () => {
-  const [chatbotElement, setChatbotElement] = useState(null);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
+  }, []);
 
-    // Create a container element for the chatbot
+  // Create portal container element
+  useEffect(() => {
+    if (!isClient) return;
+
     const chatbotContainer = document.createElement('div');
     chatbotContainer.id = 'docusaurus-chatbot-portal';
     document.body.appendChild(chatbotContainer);
 
-    setChatbotElement(chatbotContainer);
-
     // Clean up on unmount
     return () => {
-      if (chatbotContainer && chatbotContainer.parentNode) {
-        chatbotContainer.parentNode.removeChild(chatbotContainer);
+      const existingContainer = document.getElementById('docusaurus-chatbot-portal');
+      if (existingContainer && existingContainer.parentNode) {
+        existingContainer.parentNode.removeChild(existingContainer);
       }
     };
-  }, []);
+  }, [isClient]);
 
-  // Dynamically load and render the chatbot component
+  if (!isClient) {
+    return null;
+  }
+
+  // Dynamically import and render the chatbot component
+  const [ChatbotComponent, setChatbotComponent] = useState(null);
+
   useEffect(() => {
-    if (!chatbotElement || !isClient) return;
-
-    const loadAndRenderChatbot = async () => {
+    const loadChatbot = async () => {
       try {
-        // Dynamically import the chatbot component
         const { default: Chatbot } = await import('./index');
-
-        // Create a React component that renders the chatbot
-        const ChatbotComponent = () => <Chatbot />;
-
-        // Render the chatbot into the portal container
-        // We'll use a simple approach by rendering it directly
-        if (chatbotElement) {
-          // We'll handle the rendering differently to avoid direct circular imports
-          // Instead, we'll use dynamic import and render to the DOM element
-          const renderChatbot = async () => {
-            try {
-              const { createRoot } = await import('react-dom/client');
-              const chatbotModule = await import('./index');
-              if (chatbotModule.default && chatbotElement) {
-                const root = createRoot(chatbotElement);
-                root.render(<chatbotModule.default />);
-              }
-            } catch (error) {
-              console.error('Failed to render chatbot:', error);
-            }
-          };
-
-          renderChatbot();
-        }
+        setChatbotComponent(Chatbot);
       } catch (error) {
         console.error('Failed to load chatbot:', error);
       }
     };
 
-    loadAndRenderChatbot();
-  }, [chatbotElement, isClient]);
+    loadChatbot();
+  }, []);
 
-  // Return null since the chatbot is rendered via portal
-  return null;
+  const portalContainer = document.getElementById('docusaurus-chatbot-portal');
+
+  if (!ChatbotComponent || !portalContainer) {
+    return null;
+  }
+
+  return createPortal(<ChatbotComponent />, portalContainer);
 };
 
 export default ChatbotPortal;

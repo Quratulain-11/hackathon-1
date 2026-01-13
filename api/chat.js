@@ -43,15 +43,10 @@ export default async function handler(req, res) {
 
   try {
     // Get the backend URL from environment variables
-    const backendUrl = process.env.BACKEND_URL || process.env.REACT_APP_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
+    const backendUrl = process.env.BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
     console.log('Backend URL:', backendUrl);
     console.log('Request body:', req.body);
-    console.log('Request headers:', {
-      'content-type': req.headers['content-type'],
-      'user-agent': req.headers['user-agent'],
-      'accept': req.headers['accept']
-    });
 
     // Function to warm up the Hugging Face Space with better error handling
     const warmUpSpace = async (maxRetries = 3) => {
@@ -122,7 +117,6 @@ export default async function handler(req, res) {
     const endpointUrl = `${backendUrl}/api/v1/chat`;
     console.log(`Attempting to call: ${endpointUrl}`);
 
-    // Try with additional headers that might be required by Hugging Face
     // Create a timeout promise for the fetch call
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000);
