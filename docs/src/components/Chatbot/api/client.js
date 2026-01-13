@@ -69,20 +69,35 @@ export const sendMessage = async (query, maxRetries = 3) => {
           };
         }
 
-        // Handle 405 specifically - this often means the backend is not ready yet
+        // Handle 405 specifically - Return a user-friendly message instead of throwing an error
         if (response.status === 405) {
           console.error('405 Method Not Allowed error - backend may not be fully ready:', errorMessage);
-          throw new Error(`Backend service not ready: ${errorMessage}. This may be a temporary issue with the Hugging Face Space waking up. Please try again in a moment.`);
+          return {
+            answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+            sources: [],
+            query: request.query,
+            message: "The backend service is experiencing issues. Our team has been notified."
+          };
         }
 
-        // Don't retry on 4xx client errors (except 429 and 405 which are handled above)
-        if (response.status >= 400 && response.status < 500 && response.status !== 429 && response.status !== 405) {
+        // Don't retry on 4xx client errors (except 429 which is handled above)
+        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
           console.error('Client error:', errorMessage);
-          throw new Error(errorMessage);
+          return {
+            answer: "I'm unable to process your request at the moment. Please try again later.",
+            sources: [],
+            query: request.query,
+            error: errorMessage
+          };
         }
 
         console.error('Server error:', errorMessage);
-        throw new Error(errorMessage);
+        return {
+          answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+          sources: [],
+          query: request.query,
+          error: errorMessage
+        };
       }
 
       const data = await response.json();
@@ -93,7 +108,12 @@ export const sendMessage = async (query, maxRetries = 3) => {
       // If it's a timeout error
       if (error instanceof Error && error.message.includes('timeout')) {
         if (attempt === maxRetries) {
-          throw new Error('Request timed out. The backend is taking too long to respond.');
+          return {
+            answer: "The request is taking too long to process. Please try again in a moment.",
+            sources: [],
+            query: request.query,
+            error: 'Request timed out'
+          };
         }
         // Wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -103,7 +123,12 @@ export const sendMessage = async (query, maxRetries = 3) => {
       // Handle network errors that might be transient
       if (error instanceof TypeError && error.message.includes('fetch')) {
         if (attempt === maxRetries) {
-          throw new Error('Unable to connect to the backend. Please ensure the Hugging Face Spaces backend is running.');
+          return {
+            answer: "Unable to connect to the backend service. Please check your connection and try again.",
+            sources: [],
+            query: request.query,
+            error: 'Network connection failed'
+          };
         }
         // Wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -113,7 +138,12 @@ export const sendMessage = async (query, maxRetries = 3) => {
       // Handle 429 (Too Many Requests) errors with retry
       if (error instanceof Error && error.message.includes('429')) {
         if (attempt === maxRetries) {
-          throw error;
+          return {
+            answer: "The system is temporarily busy. Please try again in a moment.",
+            sources: [],
+            query: request.query,
+            error: 'Rate limited'
+          };
         }
         // Wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -122,19 +152,29 @@ export const sendMessage = async (query, maxRetries = 3) => {
 
       // Handle other errors
       if (error instanceof Error) {
-        // If it's the last attempt, throw the error
+        // If it's the last attempt, return a user-friendly message
         if (attempt === maxRetries) {
           console.error('Final error after retries:', error.message);
-          throw error;
+          return {
+            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+            sources: [],
+            query: request.query,
+            error: error.message
+          };
         }
         // Otherwise, wait before retrying (exponential backoff)
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
         continue;
       }
 
-      // If it's the last attempt, throw the error
+      // If it's the last attempt, return a user-friendly message
       if (attempt === maxRetries) {
-        throw new Error('An unknown error occurred while sending the message.');
+        return {
+          answer: "An unexpected error occurred. Please try again in a moment.",
+          sources: [],
+          query: request.query,
+          error: 'Unknown error occurred'
+        };
       }
       // Otherwise, wait before retrying (exponential backoff)
       await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
@@ -142,5 +182,10 @@ export const sendMessage = async (query, maxRetries = 3) => {
   }
 
   // This line should never be reached due to the return statements above
-  throw new Error('Unexpected error in sendMessage function');
+  return {
+    answer: "An unexpected error occurred. Please try again in a moment.",
+    sources: [],
+    query: request.query,
+    error: 'Unexpected error in sendMessage function'
+  };
 };
