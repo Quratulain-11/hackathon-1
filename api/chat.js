@@ -137,6 +137,32 @@ export default async function handler(req, res) {
           setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000);
         });
 
+        // Prepare the request body - adapt to what the backend expects
+        // If the original request has a 'query' field, use it as the main input
+        let requestBody;
+        if (req.body.query) {
+          // Standard format for RAG applications
+          requestBody = {
+            query: req.body.query,
+            top_k: req.body.top_k || 5,
+            temperature: req.body.temperature || 0.7,
+            max_tokens: req.body.max_tokens || 500
+          };
+        } else if (req.body.inputs || req.body.input) {
+          // Format for Hugging Face-style endpoints
+          requestBody = {
+            inputs: req.body.inputs || req.body.input,
+            parameters: {
+              top_k: req.body.top_k || 5,
+              temperature: req.body.temperature || 0.7,
+              max_tokens: req.body.max_tokens || 500
+            }
+          };
+        } else {
+          // Fallback: use original request body
+          requestBody = req.body;
+        }
+
         // Race the fetch request against a timeout
         const fetchPromise = fetch(endpointUrl, {
           method: 'POST',
@@ -147,7 +173,7 @@ export default async function handler(req, res) {
             'Connection': 'keep-alive',
             'Accept-Encoding': 'gzip, deflate, br'
           },
-          body: JSON.stringify(req.body), // Send the original request body as-is
+          body: JSON.stringify(requestBody),
         });
 
         response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -261,8 +287,8 @@ export default async function handler(req, res) {
 
     // Ensure the response matches the expected format for the frontend
     const formattedResponse = {
-      answer: data.answer || data.response || data.result || JSON.stringify(data),
-      sources: data.sources || data.source_documents || [],
+      answer: data.answer || data.response || data.result || data.generated_text || JSON.stringify(data),
+      sources: data.sources || data.source_documents || data.context || [],
       query: req.body.query || req.body.question || req.body.message || '',
       original_response: data
     };
