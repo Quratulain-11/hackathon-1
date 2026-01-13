@@ -374,10 +374,12 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Proxy error:', error);
     console.error('Error stack:', error.stack);
+
+    // Return a friendly error message instead of propagating the error
     res.status(500).json({
-      error: 'Internal server error',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: 'Backend service temporarily unavailable',
+      details: 'Please try again in a moment',
+      message: 'The backend service is experiencing issues. Our team has been notified.'
     });
   }
 }
