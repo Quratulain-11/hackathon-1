@@ -1,11 +1,13 @@
 /**
  * Custom Layout component with safe chatbot integration
  */
-import React from 'react';
+import React, { Suspense } from 'react';
 import OriginalLayout from '@theme-original/Layout';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import { initializeBackendConfig } from '@site/src/utils/backendConfig';
-import ChatbotPortal from '../../components/Chatbot/ChatbotPortal';
+
+// Dynamically import the chatbot component to avoid SSR issues
+const Chatbot = React.lazy(() => import('../../components/Chatbot'));
 
 export default function Layout(props) {
   const { siteConfig } = useDocusaurusContext();
@@ -29,7 +31,9 @@ export default function Layout(props) {
   return (
     <>
       <OriginalLayout {...props} />
-      <ChatbotPortal />
+      <Suspense fallback={null}>
+        <Chatbot />
+      </Suspense>
     </>
   );
 }
