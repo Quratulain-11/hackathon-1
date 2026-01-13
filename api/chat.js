@@ -113,8 +113,19 @@ export default async function handler(req, res) {
     // Warm up the space before making the main request
     await warmUpSpace();
 
-    // Try the documented endpoint: /api/v1/chat
-    const endpointUrl = `${backendUrl}/api/v1/chat`;
+    // Convert the request body to the Hugging Face format
+    // Hugging Face typically expects { "data": [input_values...] } or { "inputs": input_value }
+    const hfRequestBody = {
+      inputs: req.body.query || req.body.message || req.body.data || JSON.stringify(req.body),
+      parameters: {
+        top_k: req.body.top_k || 5,
+        temperature: req.body.temperature || 0.7,
+        max_tokens: req.body.max_tokens || 500
+      }
+    };
+
+    // Try the Hugging Face prediction endpoint: /api/predict or /run/predict
+    let endpointUrl = `${backendUrl}/api/predict`;
     console.log(`Attempting to call: ${endpointUrl}`);
 
     // Create a timeout promise for the fetch call
@@ -134,7 +145,7 @@ export default async function handler(req, res) {
           'Connection': 'keep-alive',
           'Accept-Encoding': 'gzip, deflate, br'
         },
-        body: JSON.stringify(req.body),
+        body: JSON.stringify(hfRequestBody),
       });
 
       response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -154,13 +165,13 @@ export default async function handler(req, res) {
 
     console.log(`Response status: ${response.status}`);
 
-    // Handle different response statuses appropriately
+    // Handle 404 - try alternative endpoints for Hugging Face Spaces
     if (response.status === 404) {
-      console.log('Received 404 error, trying alternative endpoints...');
+      console.log('Received 404 error, trying alternative Hugging Face endpoints...');
 
-      // Try the /chat endpoint (might be served without /api/v1 prefix in some deployments)
-      const altEndpointUrl = `${backendUrl}/chat`;
-      console.log(`Trying alternative endpoint: ${altEndpointUrl}`);
+      // Try /run/predict endpoint
+      endpointUrl = `${backendUrl}/run/predict`;
+      console.log(`Trying alternative endpoint: ${endpointUrl}`);
 
       const altTimeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Alternative request timeout after 30 seconds')), 30000);
@@ -169,14 +180,14 @@ export default async function handler(req, res) {
       let altResponse;
       try {
         // Race the fetch request against a timeout
-        const altFetchPromise = fetch(altEndpointUrl, {
+        const altFetchPromise = fetch(endpointUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'User-Agent': 'Vercel-Proxy/1.0'
           },
-          body: JSON.stringify(req.body),
+          body: JSON.stringify(hfRequestBody),
         });
 
         altResponse = await Promise.race([altFetchPromise, altTimeoutPromise]);
@@ -209,129 +220,125 @@ export default async function handler(req, res) {
         });
       }
 
+      // Format the response to match what the frontend expects
+      const formattedResponse = formatHuggingFaceResponse(altData, req.body.query);
       const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
       console.log(`Returning response with status: ${statusCode}`);
-      return res.status(statusCode).json(altData);
+      return res.status(statusCode).json(formattedResponse);
     }
-    // If we get a 405, it might be due to the space still not being ready, so try again after a delay
+    // Handle 405 - Method not allowed, try different approaches
     else if (response.status === 405) {
-      console.log('Received 405 error, attempting retry after additional warm-up...');
+      console.log('Received 405 error, trying alternative approaches for Hugging Face endpoints...');
 
-      // Wait a bit more and try again
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      const retryTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Retry request timeout after 30 seconds')), 30000);
-      });
-
-      let retryResponse;
+      // Try GET method first to see if the endpoint supports it
       try {
-        // Race the fetch request against a timeout
-        const retryFetchPromise = fetch(endpointUrl, {
-          method: 'POST',
+        const getResponse = await fetch(`${backendUrl}/api/predict`, {
+          method: 'GET',
           headers: {
-            'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'User-Agent': 'Vercel-Proxy/1.0',
-            'Connection': 'keep-alive',
-            'Accept-Encoding': 'gzip, deflate, br'
-          },
-          body: JSON.stringify(req.body),
+            'User-Agent': 'Vercel-Proxy/1.0'
+          }
         });
 
-        retryResponse = await Promise.race([retryFetchPromise, retryTimeoutPromise]);
-      } catch (networkError) {
-        console.error('Network error when calling backend (retry):', networkError.message);
-        if (networkError.message.includes('timeout')) {
-          return res.status(408).json({
-            error: 'Request timeout',
-            details: 'Backend service took too long to respond (retry)'
-          });
-        }
-        return res.status(502).json({
-          error: 'Network error connecting to backend service (retry)',
-          details: networkError.message
-        });
-      }
+        console.log(`GET method status: ${getResponse.status}`);
 
-      console.log(`Retry response status: ${retryResponse.status}`);
+        // If GET is allowed, try POST again after a delay (space might be waking up)
+        if (getResponse.status !== 405) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
 
-      if (retryResponse.status === 405) {
-        // If still getting 405, try alternative endpoints
-        console.log('Still receiving 405 error, trying alternative approaches...');
-
-        // Try the /chat endpoint (might be served without /api/v1 prefix in some deployments)
-        const altEndpointUrl = `${backendUrl}/chat`;
-        console.log(`Trying alternative endpoint: ${altEndpointUrl}`);
-
-        const finalAltTimeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Final alternative request timeout after 30 seconds')), 30000);
-        });
-
-        let altResponse;
-        try {
-          // Race the fetch request against a timeout
-          const finalAltFetchPromise = fetch(altEndpointUrl, {
+          const retryResponse = await fetch(endpointUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
-              'User-Agent': 'Vercel-Proxy/1.0'
+              'User-Agent': 'Vercel-Proxy/1.0',
+              'Connection': 'keep-alive',
+              'Accept-Encoding': 'gzip, deflate, br'
             },
-            body: JSON.stringify(req.body),
+            body: JSON.stringify(hfRequestBody),
           });
 
-          altResponse = await Promise.race([finalAltFetchPromise, finalAltTimeoutPromise]);
-        } catch (networkError) {
-          console.error('Network error when calling alternative endpoint:', networkError.message);
-          if (networkError.message.includes('timeout')) {
-            return res.status(408).json({
-              error: 'Request timeout',
-              details: 'Alternative backend service took too long to respond'
-            });
+          console.log(`Retry response status: ${retryResponse.status}`);
+
+          if (retryResponse.status !== 405) {
+            // Process normally if not 405
+            let retryData;
+            try {
+              retryData = await retryResponse.json();
+            } catch (parseError) {
+              const textResponse = await retryResponse.text();
+              console.log('Retry non-JSON response received:', textResponse);
+              return res.status(retryResponse.status).json({
+                error: textResponse,
+                status: retryResponse.status
+              });
+            }
+
+            const formattedResponse = formatHuggingFaceResponse(retryData, req.body.query);
+            const statusCode = Math.min(Math.max(retryResponse.status, 100), 599);
+            console.log(`Returning response with status: ${statusCode} from retry`);
+            return res.status(statusCode).json(formattedResponse);
           }
-          return res.status(502).json({
-            error: 'Network error connecting to alternative endpoint',
-            details: networkError.message
-          });
         }
-
-        console.log(`Alternative endpoint response status: ${altResponse.status}`);
-
-        // Process the alternative response
-        let altData;
-        try {
-          altData = await altResponse.json();
-        } catch (parseError) {
-          const textResponse = await altResponse.text();
-          console.log('Alternative endpoint non-JSON response:', textResponse);
-          return res.status(altResponse.status).json({
-            error: textResponse,
-            status: altResponse.status
-          });
-        }
-
-        const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
-        console.log(`Returning response with status: ${statusCode} from alternative endpoint`);
-        return res.status(statusCode).json(altData);
-      } else {
-        // If retry worked, process normally
-        let retryData;
-        try {
-          retryData = await retryResponse.json();
-        } catch (parseError) {
-          const textResponse = await retryResponse.text();
-          console.log('Retry non-JSON response received:', textResponse);
-          return res.status(retryResponse.status).json({
-            error: textResponse,
-            status: retryResponse.status
-          });
-        }
-
-        const statusCode = Math.min(Math.max(retryResponse.status, 100), 599);
-        console.log(`Returning response with status: ${statusCode} from retry`);
-        return res.status(statusCode).json(retryData);
+      } catch (getErr) {
+        console.log('GET method check failed, continuing with alternatives:', getErr.message);
       }
+
+      // Try /run/predict endpoint as alternative
+      const altEndpointUrl = `${backendUrl}/run/predict`;
+      console.log(`Trying /run/predict endpoint: ${altEndpointUrl}`);
+
+      const finalAltTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Final alternative request timeout after 30 seconds')), 30000);
+      });
+
+      let altResponse;
+      try {
+        // Race the fetch request against a timeout
+        const finalAltFetchPromise = fetch(altEndpointUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Vercel-Proxy/1.0'
+          },
+          body: JSON.stringify(hfRequestBody),
+        });
+
+        altResponse = await Promise.race([finalAltFetchPromise, finalAltTimeoutPromise]);
+      } catch (networkError) {
+        console.error('Network error when calling alternative endpoint:', networkError.message);
+        if (networkError.message.includes('timeout')) {
+          return res.status(408).json({
+            error: 'Request timeout',
+            details: 'Alternative backend service took too long to respond'
+          });
+        }
+        return res.status(502).json({
+          error: 'Network error connecting to alternative endpoint',
+          details: networkError.message
+        });
+      }
+
+      console.log(`Alternative endpoint response status: ${altResponse.status}`);
+
+      // Process the alternative response
+      let altData;
+      try {
+        altData = await altResponse.json();
+      } catch (parseError) {
+        const textResponse = await altResponse.text();
+        console.log('Alternative endpoint non-JSON response:', textResponse);
+        return res.status(altResponse.status).json({
+          error: textResponse,
+          status: altResponse.status
+        });
+      }
+
+      const formattedResponse = formatHuggingFaceResponse(altData, req.body.query);
+      const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
+      console.log(`Returning response with status: ${statusCode} from alternative endpoint`);
+      return res.status(statusCode).json(formattedResponse);
     }
     // Handle other error statuses
     else if (response.status >= 400) {
@@ -349,10 +356,21 @@ export default async function handler(req, res) {
       }
 
       console.log(`Error response data:`, errorData);
+
+      // If it's a 405 error, return a friendly message instead of the error
+      if (response.status === 405) {
+        return res.status(200).json({
+          answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+          sources: [],
+          query: req.body.query,
+          message: "The backend service is experiencing issues. Our team has been notified."
+        });
+      }
+
       return res.status(response.status).json(errorData);
     }
 
-    // Process the original response
+    // Process the original response from Hugging Face
     let data;
     try {
       data = await response.json();
@@ -366,11 +384,14 @@ export default async function handler(req, res) {
       });
     }
 
+    // Format the Hugging Face response to match frontend expectations
+    const formattedResponse = formatHuggingFaceResponse(data, req.body.query);
+
     // Return the response from the backend
     // Use Math.min to ensure we don't return an invalid status code
     const statusCode = Math.min(Math.max(response.status, 100), 599);
     console.log(`Returning successful response with status: ${statusCode}`);
-    res.status(statusCode).json(data);
+    res.status(statusCode).json(formattedResponse);
   } catch (error) {
     console.error('Proxy error:', error);
     console.error('Error stack:', error.stack);
@@ -379,7 +400,81 @@ export default async function handler(req, res) {
     res.status(500).json({
       error: 'Backend service temporarily unavailable',
       details: 'Please try again in a moment',
+      answer: "I'm currently unable to process your request. Please try again in a moment.",
+      sources: [],
+      query: req.body?.query || '',
       message: 'The backend service is experiencing issues. Our team has been notified.'
     });
   }
+}
+
+// Helper function to format Hugging Face response to match frontend expectations
+function formatHuggingFaceResponse(hfData, query) {
+  // Hugging Face responses can come in different formats
+  // Try to extract the answer from various possible structures
+  let answer = '';
+  let sources = [];
+
+  if (hfData && typeof hfData === 'object') {
+    // Common Hugging Face response formats
+    if (Array.isArray(hfData)) {
+      // If it's an array, take the first element as the answer
+      answer = hfData[0] || hfData.join(' ') || 'I processed your request successfully.';
+    } else if (hfData.hasOwnProperty('data')) {
+      // If it has a 'data' property
+      if (Array.isArray(hfData.data)) {
+        answer = hfData.data[0] || hfData.data.join(' ');
+      } else {
+        answer = hfData.data || JSON.stringify(hfData.data);
+      }
+    } else if (hfData.hasOwnProperty('outputs') || hfData.hasOwnProperty('output')) {
+      // If it has 'outputs' or 'output' property
+      const output = hfData.outputs || hfData.output;
+      if (Array.isArray(output)) {
+        answer = output[0] || output.join(' ');
+      } else {
+        answer = output || JSON.stringify(output);
+      }
+    } else if (hfData.hasOwnProperty('result')) {
+      // If it has a 'result' property
+      answer = hfData.result || JSON.stringify(hfData.result);
+    } else if (hfData.hasOwnProperty('generated_text')) {
+      // Common for text generation models
+      answer = hfData.generated_text || JSON.stringify(hfData);
+    } else {
+      // Try to find any text-like property
+      const textProps = ['answer', 'response', 'text', 'content', 'prediction', 'prediction_result'];
+      for (const prop of textProps) {
+        if (hfData.hasOwnProperty(prop)) {
+          answer = hfData[prop];
+          break;
+        }
+      }
+
+      if (!answer) {
+        // If no specific property found, stringify the entire object
+        answer = JSON.stringify(hfData);
+      }
+    }
+
+    // Extract sources if available
+    if (hfData.hasOwnProperty('sources') || hfData.hasOwnProperty('source_documents')) {
+      sources = hfData.sources || hfData.source_documents || [];
+    }
+  } else {
+    // If it's not an object, convert to string
+    answer = String(hfData || 'Processing completed.');
+  }
+
+  // Ensure answer is a string
+  if (typeof answer !== 'string') {
+    answer = JSON.stringify(answer);
+  }
+
+  return {
+    answer: answer,
+    sources: sources,
+    query: query,
+    original_response: hfData // Include original response for debugging if needed
+  };
 }
