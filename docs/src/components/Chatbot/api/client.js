@@ -1,7 +1,6 @@
 /**
  * API client for communicating with the Hugging Face Spaces backend
  */
-import { getBackendConfig } from '../config';
 
 // Create a timeout promise
 const timeoutPromise = (ms) => {
@@ -10,58 +9,45 @@ const timeoutPromise = (ms) => {
   });
 };
 
-export const sendMessage = async (query, maxRetries = 3) => {
-  const request = {
-    query,
-    top_k: 5, // Default to 5 top results
-    temperature: 0.7, // Default temperature
-    max_tokens: 500, // Default max tokens
+export const sendMessage = async (query, maxRetries = 1) => {
+  // Use environment variable for backend URL, fallback to config
+  const backendUrl = typeof window !== 'undefined' && window.location.hostname.includes('localhost')
+    ? 'https://nainee-chatbot.hf.space'  // Use direct backend for local dev
+    : (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space');
+
+  // Prepare the request body in the correct Hugging Face Gradio format
+  const hfRequestBody = {
+    data: [query]
   };
 
-  // Determine the endpoint to use based on environment
-  // Use Vercel API route proxy when deployed to avoid CORS issues
-  const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
-  const isNetlify = typeof window !== 'undefined' && window.location.hostname.includes('netlify.app');
-  const isProduction = typeof window !== 'undefined' && !window.location.hostname.includes('localhost');
-
-  // Use proxy API route when deployed to Vercel or other platforms to avoid CORS
-  // For Hugging Face Spaces, we need to use the proxy to avoid CORS issues
-  const currentBackendConfig = getBackendConfig();
-  const endpoint = (isVercel || isNetlify || (isProduction && !window.location.hostname.includes('github')))
-    ? '/api/chat'  // Use Vercel API route proxy
-    : `${currentBackendConfig.baseUrl}/api/v1/chat`;  // Direct to Hugging Face
-
-  // Retry mechanism for transient network errors
+  // Retry mechanism for cold starts
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // Create the fetch promise with proper error handling
-      const fetchPromise = fetch(endpoint, {
+      // Create AbortController for timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
+      const endpointUrl = `${backendUrl}/run/predict`;
+
+      const response = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // Additional headers that might be needed for Hugging Face Spaces
           'Accept': 'application/json',
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify(hfRequestBody),
+        signal: controller.signal
       });
 
-      // Race the fetch promise against the timeout
-      const response = await Promise.race([
-        fetchPromise,
-        timeoutPromise(30000) // 30 second timeout
-      ]);
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.detail || errorData.error || `HTTP error! status: ${response.status}`;
-
         // Handle 429 specifically for rate limiting
         if (response.status === 429) {
-          // Return a user-friendly message instead of throwing an error
           return {
             answer: "The system is temporarily busy. Please try again in a moment.",
             sources: [],
-            query: request.query,
+            query: query,
             confidence: 0.0,
             retrieval_time_ms: 0,
             response_time_ms: 0,
@@ -69,115 +55,133 @@ export const sendMessage = async (query, maxRetries = 3) => {
           };
         }
 
-        // Handle 405 specifically - Return a user-friendly message instead of throwing an error
+        // Handle 405 specifically - Common during cold starts
         if (response.status === 405) {
-          console.error('405 Method Not Allowed error - backend may not be fully ready:', errorMessage);
+          console.error('405 Method Not Allowed error - backend may not be fully ready');
+          if (attempt < maxRetries) {
+            // Wait before retrying for cold start
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            continue;
+          }
           return {
             answer: "I'm temporarily unable to process your request. Please try again in a moment.",
             sources: [],
-            query: request.query,
+            query: query,
             message: "The backend service is experiencing issues. Our team has been notified."
           };
         }
 
-        // Don't retry on 4xx client errors (except 429 which is handled above)
-        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-          console.error('Client error:', errorMessage);
-          return {
-            answer: "I'm unable to process your request at the moment. Please try again later.",
-            sources: [],
-            query: request.query,
-            error: errorMessage
-          };
+        // For other error statuses, try once more before giving up
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
         }
 
-        console.error('Server error:', errorMessage);
+        // If it's the last attempt, return error message
+        const errorText = await response.text().catch(() => '');
+        console.error(`Server error: ${response.status}`, errorText);
         return {
           answer: "I'm experiencing technical difficulties. Please try again in a moment.",
           sources: [],
-          query: request.query,
-          error: errorMessage
+          query: query,
+          error: `HTTP error! status: ${response.status}`
         };
       }
 
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Fetch error (attempt ' + attempt + '):', error.message);
+      // Parse response - check if it's HTML (error page) before parsing as JSON
+      const contentType = response.headers.get('content-type');
+      let data;
 
-      // If it's a timeout error
-      if (error instanceof Error && error.message.includes('timeout')) {
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // If not JSON, it might be an HTML error page - try to handle gracefully
+        const responseText = await response.text();
+
+        // Check if response looks like JSON despite content-type
+        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+          try {
+            data = JSON.parse(responseText);
+          } catch {
+            // If it's not valid JSON, return a generic error
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              continue;
+            }
+            return {
+              answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+              sources: [],
+              query: query,
+              error: 'Invalid response from server'
+            };
+          }
+        } else {
+          // It's HTML or plain text error page
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            continue;
+          }
+          return {
+            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+            sources: [],
+            query: query,
+            error: 'Received unexpected response from server'
+          };
+        }
+      }
+
+      // Extract the result from the response (Hugging Face format)
+      let answer = '';
+      if (data && Array.isArray(data.data)) {
+        answer = data.data[0] || JSON.stringify(data);
+      } else if (data && typeof data === 'object') {
+        // Try to find the answer in different possible fields
+        answer = data.answer || data.response || data.result || data.generated_text || JSON.stringify(data);
+      } else {
+        answer = String(data);
+      }
+
+      // Return response in the expected format
+      return {
+        answer: answer,
+        sources: [],
+        query: query,
+        confidence: 0.7, // Default confidence
+        retrieval_time_ms: 0,
+        response_time_ms: 0,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error.name === 'AbortError') {
+        // Timeout occurred
         if (attempt === maxRetries) {
           return {
             answer: "The request is taking too long to process. Please try again in a moment.",
             sources: [],
-            query: request.query,
+            query: query,
             error: 'Request timed out'
           };
         }
-        // Wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        // Retry on timeout
+        await new Promise(resolve => setTimeout(resolve, 3000));
         continue;
       }
 
-      // Handle network errors that might be transient
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        if (attempt === maxRetries) {
-          return {
-            answer: "Unable to connect to the backend service. Please check your connection and try again.",
-            sources: [],
-            query: request.query,
-            error: 'Network connection failed'
-          };
-        }
-        // Wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-        continue;
-      }
+      console.error('Fetch error (attempt ' + attempt + '):', error.message);
 
-      // Handle 429 (Too Many Requests) errors with retry
-      if (error instanceof Error && error.message.includes('429')) {
-        if (attempt === maxRetries) {
-          return {
-            answer: "The system is temporarily busy. Please try again in a moment.",
-            sources: [],
-            query: request.query,
-            error: 'Rate limited'
-          };
-        }
-        // Wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-        continue;
-      }
-
-      // Handle other errors
-      if (error instanceof Error) {
-        // If it's the last attempt, return a user-friendly message
-        if (attempt === maxRetries) {
-          console.error('Final error after retries:', error.message);
-          return {
-            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
-            sources: [],
-            query: request.query,
-            error: error.message
-          };
-        }
-        // Otherwise, wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-        continue;
-      }
-
-      // If it's the last attempt, return a user-friendly message
       if (attempt === maxRetries) {
         return {
-          answer: "An unexpected error occurred. Please try again in a moment.",
+          answer: "I'm experiencing technical difficulties. Please try again in a moment.",
           sources: [],
-          query: request.query,
-          error: 'Unknown error occurred'
+          query: query,
+          error: error.message
         };
       }
-      // Otherwise, wait before retrying (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
   }
 
@@ -185,7 +189,7 @@ export const sendMessage = async (query, maxRetries = 3) => {
   return {
     answer: "An unexpected error occurred. Please try again in a moment.",
     sources: [],
-    query: request.query,
+    query: query,
     error: 'Unexpected error in sendMessage function'
   };
 };

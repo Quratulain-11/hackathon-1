@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
   try {
     // Get the backend URL from environment variables
-    const backendUrl = process.env.BACKEND_URL || 'https://nainee-chatbot.hf.space';
+    const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space';
 
     console.log('Backend URL:', backendUrl);
     console.log('Request body:', req.body);
@@ -124,15 +124,13 @@ export default async function handler(req, res) {
     console.log(`Attempting to call: ${endpointUrl}`);
     console.log(`Sending request body:`, hfRequestBody);
 
-    // Create a timeout promise for the fetch call
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000);
-    });
+    // Create AbortController for timeout handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
     let response;
     try {
-      // Race the fetch request against a timeout
-      const fetchPromise = fetch(endpointUrl, {
+      response = await fetch(endpointUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -142,12 +140,14 @@ export default async function handler(req, res) {
           'Accept-Encoding': 'gzip, deflate, br'
         },
         body: JSON.stringify(hfRequestBody),
+        signal: controller.signal
       });
 
-      response = await Promise.race([fetchPromise, timeoutPromise]);
+      clearTimeout(timeoutId);
     } catch (networkError) {
+      clearTimeout(timeoutId);
       console.error('Network error when calling backend:', networkError.message);
-      if (networkError.message.includes('timeout')) {
+      if (networkError.name === 'AbortError') {
         return res.status(200).json({
           answer: "I'm temporarily unable to process your request. Please try again in a moment.",
           sources: [],
@@ -165,84 +165,12 @@ export default async function handler(req, res) {
 
     console.log(`Response status: ${response.status}`);
 
-    // Handle 404 - the /run/predict endpoint might not exist, try alternatives
-    if (response.status === 404) {
-      console.log('Received 404 error, trying alternative endpoints...');
-
-      // Try /api/predict endpoint as alternative
-      const altEndpointUrl = `${backendUrl}/api/predict`;
-      console.log(`Trying alternative endpoint: ${altEndpointUrl}`);
-
-      const altTimeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Alternative request timeout after 30 seconds')), 30000);
-      });
-
-      let altResponse;
-      try {
-        // Race the fetch request against a timeout
-        const altFetchPromise = fetch(altEndpointUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'Vercel-Proxy/1.0'
-          },
-          body: JSON.stringify(hfRequestBody),
-        });
-
-        altResponse = await Promise.race([altFetchPromise, altTimeoutPromise]);
-      } catch (networkError) {
-        console.error('Network error when calling alternative endpoint:', networkError.message);
-        return res.status(200).json({
-          answer: "I'm temporarily unable to process your request. Please try again in a moment.",
-          sources: [],
-          query: req.body.query || req.body.message || '',
-          message: "The backend service is experiencing issues. Our team has been notified."
-        });
-      }
-
-      console.log(`Alternative endpoint response status: ${altResponse.status}`);
-
-      // Process the alternative response
-      let altData;
-      try {
-        altData = await altResponse.json();
-      } catch (parseError) {
-        const textResponse = await altResponse.text();
-        console.log('Alternative endpoint non-JSON response:', textResponse);
-        return res.status(200).json({
-          answer: "I'm temporarily unable to process your request. Please try again in a moment.",
-          sources: [],
-          query: req.body.query || req.body.message || '',
-          message: "The backend service is experiencing issues. Our team has been notified."
-        });
-      }
-
-      // Extract the result from the response
-      let answer = '';
-      if (altData && Array.isArray(altData.data)) {
-        answer = altData.data[0] || JSON.stringify(altData);
-      } else if (altData && typeof altData === 'object') {
-        // Try to find the answer in different possible fields
-        answer = altData.answer || altData.response || altData.result || altData.generated_text || JSON.stringify(altData);
-      } else {
-        answer = String(altData);
-      }
-
-      const statusCode = Math.min(Math.max(altResponse.status, 100), 599);
-      console.log(`Returning response with status: ${statusCode}`);
-      return res.status(statusCode).json({
-        answer: answer,
-        sources: [],
-        query: req.body.query || req.body.message || ''
-      });
-    }
     // Handle 405 - Method not allowed, try again after delay (common with cold starts)
-    else if (response.status === 405) {
+    if (response.status === 405) {
       console.log('Received 405 error, attempting retry after delay...');
 
       // Wait a bit and try again (for cold start issues)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
       try {
         const retryResponse = await fetch(endpointUrl, {
@@ -266,13 +194,28 @@ export default async function handler(req, res) {
             retryData = await retryResponse.json();
           } catch (parseError) {
             const textResponse = await retryResponse.text();
-            console.log('Retry non-JSON response received:', textResponse);
-            return res.status(200).json({
-              answer: "I'm temporarily unable to process your request. Please try again in a moment.",
-              sources: [],
-              query: req.body.query || req.body.message || '',
-              message: "The backend service is experiencing issues. Our team has been notified."
-            });
+            // Check if response looks like JSON despite content-type
+            if (textResponse.trim().startsWith('{') || textResponse.trim().startsWith('[')) {
+              try {
+                retryData = JSON.parse(textResponse);
+              } catch {
+                console.log('Retry non-JSON response received:', textResponse);
+                return res.status(200).json({
+                  answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+                  sources: [],
+                  query: req.body.query || req.body.message || '',
+                  message: "The backend service is experiencing issues. Our team has been notified."
+                });
+              }
+            } else {
+              console.log('Retry HTML/non-JSON response received:', textResponse);
+              return res.status(200).json({
+                answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+                sources: [],
+                query: req.body.query || req.body.message || '',
+                message: "The backend service is experiencing issues. Our team has been notified."
+              });
+            }
           }
 
           // Extract the result from the response
@@ -312,12 +255,13 @@ export default async function handler(req, res) {
         });
       }
     }
+
     // Handle other error statuses
-    else if (response.status >= 400) {
+    if (response.status >= 400) {
       console.log(`Received error status ${response.status}, attempting retry...`);
 
       // Try once more after a short delay (for temporary backend issues)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       try {
         const retryResponse = await fetch(endpointUrl, {
@@ -341,13 +285,28 @@ export default async function handler(req, res) {
             retryData = await retryResponse.json();
           } catch (parseError) {
             const textResponse = await retryResponse.text();
-            console.log('Retry non-JSON response received:', textResponse);
-            return res.status(200).json({
-              answer: "I'm temporarily unable to process your request. Please try again in a moment.",
-              sources: [],
-              query: req.body.query || req.body.message || '',
-              message: "The backend service is experiencing issues. Our team has been notified."
-            });
+            // Check if response looks like JSON despite content-type
+            if (textResponse.trim().startsWith('{') || textResponse.trim().startsWith('[')) {
+              try {
+                retryData = JSON.parse(textResponse);
+              } catch {
+                console.log('Retry non-JSON response received:', textResponse);
+                return res.status(200).json({
+                  answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+                  sources: [],
+                  query: req.body.query || req.body.message || '',
+                  message: "The backend service is experiencing issues. Our team has been notified."
+                });
+              }
+            } else {
+              console.log('Retry HTML/non-JSON response received:', textResponse);
+              return res.status(200).json({
+                answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+                sources: [],
+                query: req.body.query || req.body.message || '',
+                message: "The backend service is experiencing issues. Our team has been notified."
+              });
+            }
           }
 
           // Extract the result from the response
@@ -391,11 +350,30 @@ export default async function handler(req, res) {
     // Process the successful response
     let data;
     try {
-      data = await response.json();
+      // Check if response is HTML before parsing as JSON to prevent 'Unexpected token <' errors
+      const contentType = response.headers.get('content-type');
+      const responseText = await response.text();
+
+      if (contentType && contentType.includes('application/json')) {
+        data = JSON.parse(responseText);
+      } else {
+        // Check if response looks like JSON despite content-type
+        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+          data = JSON.parse(responseText);
+        } else {
+          // It's an HTML error page or other non-JSON response
+          console.log('Received HTML/non-JSON response:', responseText.substring(0, 200) + '...');
+          return res.status(200).json({
+            answer: "I'm temporarily unable to process your request. Please try again in a moment.",
+            sources: [],
+            query: req.body.query || req.body.message || '',
+            message: "The backend service is experiencing issues. Our team has been notified."
+          });
+        }
+      }
     } catch (parseError) {
-      // If response is not JSON (e.g., plain text error), return friendly message
-      const textResponse = await response.text();
-      console.log('Non-JSON response received:', textResponse);
+      console.error('Parse error:', parseError.message);
+      // If parsing failed, return friendly message
       return res.status(200).json({
         answer: "I'm temporarily unable to process your request. Please try again in a moment.",
         sources: [],
