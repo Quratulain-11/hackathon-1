@@ -4,7 +4,9 @@
 // Access environment variable at module level to avoid runtime process checks
 const ENV_BASE_URL = typeof window !== 'undefined' && window.ENV && window.ENV.NEXT_PUBLIC_BACKEND_URL
   ? window.ENV.NEXT_PUBLIC_BACKEND_URL
-  : undefined;
+  : (typeof window !== 'undefined' && window.env && window.env.NEXT_PUBLIC_BACKEND_URL
+    ? window.env.NEXT_PUBLIC_BACKEND_URL
+    : undefined);
 
 export const getBackendConfig = () => {
   const defaultBaseUrl = 'https://nainee-chatbot.hf.space';

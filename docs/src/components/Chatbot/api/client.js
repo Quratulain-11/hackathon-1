@@ -5,48 +5,118 @@
 // Access environment variable at module level to avoid runtime process checks
 const ENV_BACKEND_URL = typeof window !== 'undefined' && window.ENV && window.ENV.NEXT_PUBLIC_BACKEND_URL
   ? window.ENV.NEXT_PUBLIC_BACKEND_URL
-  : undefined;
+  : (typeof window !== 'undefined' && window.env && window.env.NEXT_PUBLIC_BACKEND_URL
+    ? window.env.NEXT_PUBLIC_BACKEND_URL
+    : undefined);
 
-// Create a timeout promise
-const timeoutPromise = (ms) => {
-  return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Request timeout after ' + ms + 'ms')), ms);
-  });
+// Centralized backend URL resolution
+const getBackendUrl = () => {
+  // Validate and return backend URL
+  const defaultUrl = 'https://nainee-chatbot.hf.space';
+  const envUrl = ENV_BACKEND_URL;
+
+  // If we have an environment variable and it's a valid URL, use it
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    try {
+      // Ensure the URL is properly formatted
+      const urlObj = new URL(envUrl);
+      return urlObj.href.replace(/\/$/, ''); // Remove trailing slash if present
+    } catch (e) {
+      console.warn('Invalid BACKEND_URL from environment, using default:', envUrl);
+      return defaultUrl;
+    }
+  }
+
+  return defaultUrl;
 };
 
-export const sendMessage = async (query, maxRetries = 1) => {
-  // Use environment variable for backend URL, fallback to config
-  const backendUrl = typeof window !== 'undefined' && window.location.hostname.includes('localhost')
-    ? 'https://nainee-chatbot.hf.space'  // Use direct backend for local dev
-    : (ENV_BACKEND_URL || 'https://nainee-chatbot.hf.space');
+export const sendMessage = async (query, maxRetries = 2) => {
+  try {
+    // Validate input
+    if (!query || typeof query !== 'string' || query.trim() === '') {
+      return {
+        answer: "I'm unable to process your request at the moment. Please try again later.",
+        sources: [],
+        query: query || '',
+        error: 'Invalid or empty query provided'
+      };
+    }
 
-  // Prepare the request body in the correct Hugging Face Gradio format
-  const hfRequestBody = {
-    data: [query]
-  };
+    // Get validated backend URL
+    const backendUrl = getBackendUrl();
 
-  // Retry mechanism for cold starts
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      // Create AbortController for timeout handling
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+    // Validate endpoint format
+    const endpointUrl = `${backendUrl}/run/predict`;
 
-      const endpointUrl = `${backendUrl}/run/predict`;
+    // Prepare the request body in the correct Hugging Face Gradio format
+    const hfRequestBody = {
+      data: [query.trim()]
+    };
 
-      const response = await fetch(endpointUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify(hfRequestBody),
-        signal: controller.signal
-      });
+    // Validate payload before sending
+    if (!hfRequestBody.data || !Array.isArray(hfRequestBody.data) || hfRequestBody.data.length === 0) {
+      return {
+        answer: "I'm unable to process your request at the moment. Please try again later.",
+        sources: [],
+        query: query,
+        error: 'Invalid request payload format'
+      };
+    }
 
-      clearTimeout(timeoutId);
+    // Exponential backoff retry mechanism for cold starts
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // Create AbortController for timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
-      if (!response.ok) {
+        let response;
+        try {
+          response = await fetch(endpointUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify(hfRequestBody),
+            signal: controller.signal
+          });
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+
+          // Handle network errors
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+
+          return {
+            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+            sources: [],
+            query: query,
+            error: `Network error: ${fetchError.message}`
+          };
+        }
+
+        clearTimeout(timeoutId);
+
+        // Check if response is valid
+        if (!response) {
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+
+          return {
+            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+            sources: [],
+            query: query,
+            error: 'Invalid response from server'
+          };
+        }
+
         // Handle 429 specifically for rate limiting
         if (response.status === 429) {
           return {
@@ -60,14 +130,15 @@ export const sendMessage = async (query, maxRetries = 1) => {
           };
         }
 
-        // Handle 405 specifically - Common during cold starts
-        if (response.status === 405) {
-          console.error('405 Method Not Allowed error - backend may not be fully ready');
+        // Handle 405 and 502 as cold-start signals
+        if (response.status === 405 || response.status === 502 || response.status === 503) {
+          console.warn(`Cold start detected (status: ${response.status}), retrying...`);
           if (attempt < maxRetries) {
-            // Wait before retrying for cold start
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            const delay = Math.pow(2, attempt) * 2000; // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
+
           return {
             answer: "I'm temporarily unable to process your request. Please try again in a moment.",
             sources: [],
@@ -76,125 +147,172 @@ export const sendMessage = async (query, maxRetries = 1) => {
           };
         }
 
-        // For other error statuses, try once more before giving up
-        if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          continue;
-        }
-
-        // If it's the last attempt, return error message
-        const errorText = await response.text().catch(() => '');
-        console.error(`Server error: ${response.status}`, errorText);
-        return {
-          answer: "I'm experiencing technical difficulties. Please try again in a moment.",
-          sources: [],
-          query: query,
-          error: `HTTP error! status: ${response.status}`
-        };
-      }
-
-      // Parse response - check if it's HTML (error page) before parsing as JSON
-      const contentType = response.headers.get('content-type');
-      let data;
-
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        // If not JSON, it might be an HTML error page - try to handle gracefully
-        const responseText = await response.text();
-
-        // Check if response looks like JSON despite content-type
-        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
-          try {
-            data = JSON.parse(responseText);
-          } catch {
-            // If it's not valid JSON, return a generic error
-            if (attempt < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 3000));
-              continue;
-            }
-            return {
-              answer: "I'm experiencing technical difficulties. Please try again in a moment.",
-              sources: [],
-              query: query,
-              error: 'Invalid response from server'
-            };
-          }
-        } else {
-          // It's HTML or plain text error page
+        // For other error statuses, try again before giving up
+        if (!response.ok) {
           if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
+
+          // If it's the last attempt, return error message
+          const errorText = await response.text().catch(() => '');
+          console.error(`Server error: ${response.status}`, errorText);
           return {
             answer: "I'm experiencing technical difficulties. Please try again in a moment.",
             sources: [],
             query: query,
-            error: 'Received unexpected response from server'
+            error: `HTTP error! status: ${response.status}`
           };
         }
-      }
 
-      // Extract the result from the response (Hugging Face format)
-      let answer = '';
-      if (data && Array.isArray(data.data)) {
-        answer = data.data[0] || JSON.stringify(data);
-      } else if (data && typeof data === 'object') {
-        // Try to find the answer in different possible fields
-        answer = data.answer || data.response || data.result || data.generated_text || JSON.stringify(data);
-      } else {
-        answer = String(data);
-      }
+        // Safely parse response - check if it's HTML (error page) before parsing as JSON
+        let responseText;
+        try {
+          responseText = await response.text();
+        } catch (textError) {
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
 
-      // Return response in the expected format
-      return {
-        answer: answer,
-        sources: [],
-        query: query,
-        confidence: 0.7, // Default confidence
-        retrieval_time_ms: 0,
-        response_time_ms: 0,
-        timestamp: new Date().toISOString()
-      };
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error.name === 'AbortError') {
-        // Timeout occurred
-        if (attempt === maxRetries) {
           return {
-            answer: "The request is taking too long to process. Please try again in a moment.",
+            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
             sources: [],
             query: query,
-            error: 'Request timed out'
+            error: `Failed to read response: ${textError.message}`
           };
         }
-        // Retry on timeout
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        continue;
-      }
 
-      console.error('Fetch error (attempt ' + attempt + '):', error.message);
+        // Block HTML responses before JSON parsing to prevent "Unexpected token <" errors
+        if (responseText.trim().startsWith('<!DOCTYPE') ||
+            responseText.trim().startsWith('<html') ||
+            responseText.trim().startsWith('<')) {
+          console.warn('HTML response detected, treating as cold start error');
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 2000; // Exponential backoff for cold starts
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
 
-      if (attempt === maxRetries) {
+          return {
+            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+            sources: [],
+            query: query,
+            error: 'Received HTML response instead of JSON'
+          };
+        }
+
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          // Check if response looks like JSON despite content-type
+          if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+            try {
+              data = JSON.parse(responseText);
+            } catch {
+              if (attempt < maxRetries) {
+                const delay = Math.pow(2, attempt) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+              }
+
+              return {
+                answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+                sources: [],
+                query: query,
+                error: 'Invalid JSON response from server'
+              };
+            }
+          } else {
+            // It's an HTML or plain text error page
+            if (attempt < maxRetries) {
+              const delay = Math.pow(2, attempt) * 2000; // Exponential backoff for cold starts
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+
+            return {
+              answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+              sources: [],
+              query: query,
+              error: 'Received unexpected response format from server'
+            };
+          }
+        }
+
+        // Validate response shape before accessing data
+        if (!data) {
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+
+          return {
+            answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+            sources: [],
+            query: query,
+            error: 'Empty response from server'
+          };
+        }
+
+        // Extract the result from the response (Hugging Face format)
+        let answer = '';
+        if (data && Array.isArray(data.data)) {
+          answer = data.data[0] || JSON.stringify(data);
+        } else if (data && typeof data === 'object') {
+          // Try to find the answer in different possible fields
+          answer = data.answer || data.response || data.result || data.generated_text || JSON.stringify(data);
+        } else {
+          answer = String(data);
+        }
+
+        // Return response in the expected format
+        return {
+          answer: answer || "I'm unable to process your request at the moment. Please try again later.",
+          sources: Array.isArray(data.sources) ? data.sources : [],
+          query: query,
+          confidence: typeof data.confidence === 'number' ? data.confidence : 0.7,
+          retrieval_time_ms: typeof data.retrieval_time_ms === 'number' ? data.retrieval_time_ms : 0,
+          response_time_ms: typeof data.response_time_ms === 'number' ? data.response_time_ms : 0,
+          timestamp: data.timestamp || new Date().toISOString()
+        };
+      } catch (innerError) {
+        // Catch any errors in the try block and handle appropriately
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        console.error('Inner error in sendMessage (attempt ' + attempt + '):', innerError);
         return {
           answer: "I'm experiencing technical difficulties. Please try again in a moment.",
           sources: [],
           query: query,
-          error: error.message
+          error: innerError.message
         };
       }
-
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, 3000));
     }
-  }
 
-  // This line should never be reached due to the return statements above
-  return {
-    answer: "An unexpected error occurred. Please try again in a moment.",
-    sources: [],
-    query: query,
-    error: 'Unexpected error in sendMessage function'
-  };
+    // This should not be reached due to the return statements above, but as a safeguard:
+    return {
+      answer: "An unexpected error occurred. Please try again in a moment.",
+      sources: [],
+      query: query,
+      error: 'Unexpected error in sendMessage function'
+    };
+  } catch (outerError) {
+    // Final catch-all to ensure no uncaught exceptions reach the UI
+    console.error('Outer error in sendMessage:', outerError);
+    return {
+      answer: "I'm experiencing technical difficulties. Please try again in a moment.",
+      sources: [],
+      query: query,
+      error: outerError.message
+    };
+  }
 };
