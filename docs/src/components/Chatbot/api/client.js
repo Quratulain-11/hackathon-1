@@ -45,16 +45,19 @@ export const sendMessage = async (query, maxRetries = 2) => {
     // Get validated backend URL
     const backendUrl = getBackendUrl();
 
-    // Validate endpoint format
-    const endpointUrl = `${backendUrl}/run/predict`;
+    // Validate endpoint format - Use the correct API endpoint
+    const endpointUrl = `${backendUrl}/api/v1/chat`;
 
-    // Prepare the request body in the correct Hugging Face Gradio format
+    // Prepare the request body in the correct API format
     const hfRequestBody = {
-      data: [query.trim()]
+      query: query.trim(),
+      top_k: 5,
+      temperature: 0.7,
+      max_tokens: 500
     };
 
     // Validate payload before sending
-    if (!hfRequestBody.data || !Array.isArray(hfRequestBody.data) || hfRequestBody.data.length === 0) {
+    if (!hfRequestBody.query || typeof hfRequestBody.query !== 'string' || hfRequestBody.query.trim() === '') {
       return {
         answer: "I'm unable to process your request at the moment. Please try again later.",
         sources: [],
@@ -312,13 +315,21 @@ export const sendMessage = async (query, maxRetries = 2) => {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 60000);
 
+          // For local development, prepare the correct API request body format
+          const localRequestBody = {
+            query: query.trim(),
+            top_k: 5,
+            temperature: 0.7,
+            max_tokens: 500
+          };
+
           const response = await fetch(proxyEndpoint, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
-            body: JSON.stringify(hfRequestBody),
+            body: JSON.stringify(localRequestBody),
             signal: controller.signal
           });
 

@@ -144,10 +144,18 @@ export default async function handler(req, res) {
       });
     }
 
-    // Use the correct Hugging Face endpoint for predictions
-    const endpointUrl = `${backendUrl}/run/predict`;
+    // Use the correct API endpoint for predictions
+    const endpointUrl = `${backendUrl}/api/v1/chat`;
     console.log(`Attempting to call: ${endpointUrl}`);
     console.log(`Sending request body:`, hfRequestBody);
+
+    // Prepare the correct API request body format
+    const apiRequestBody = {
+      query: userMessage.trim(),
+      top_k: 5,
+      temperature: 0.7,
+      max_tokens: 500
+    };
 
     // Exponential backoff retry mechanism for cold starts
     const maxRetries = 2;
@@ -168,7 +176,7 @@ export default async function handler(req, res) {
               'Connection': 'keep-alive',
               'Accept-Encoding': 'gzip, deflate, br'
             },
-            body: JSON.stringify(hfRequestBody),
+            body: JSON.stringify(apiRequestBody),
             signal: controller.signal
           });
         } catch (networkError) {
