@@ -2,6 +2,11 @@
  * API client for communicating with the Hugging Face Spaces backend
  */
 
+// Access environment variable at module level to avoid runtime process checks
+const ENV_BACKEND_URL = typeof window !== 'undefined' && window.ENV && window.ENV.NEXT_PUBLIC_BACKEND_URL
+  ? window.ENV.NEXT_PUBLIC_BACKEND_URL
+  : undefined;
+
 // Create a timeout promise
 const timeoutPromise = (ms) => {
   return new Promise((_, reject) => {
@@ -13,7 +18,7 @@ export const sendMessage = async (query, maxRetries = 1) => {
   // Use environment variable for backend URL, fallback to config
   const backendUrl = typeof window !== 'undefined' && window.location.hostname.includes('localhost')
     ? 'https://nainee-chatbot.hf.space'  // Use direct backend for local dev
-    : (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nainee-chatbot.hf.space');
+    : (ENV_BACKEND_URL || 'https://nainee-chatbot.hf.space');
 
   // Prepare the request body in the correct Hugging Face Gradio format
   const hfRequestBody = {

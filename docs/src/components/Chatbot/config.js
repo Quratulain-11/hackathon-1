@@ -1,22 +1,24 @@
 /**
  * Configuration for the Chatbot component
  */
-// Dynamic configuration that uses environment variables
+// Access environment variable at module level to avoid runtime process checks
+const ENV_BASE_URL = typeof window !== 'undefined' && window.ENV && window.ENV.NEXT_PUBLIC_BACKEND_URL
+  ? window.ENV.NEXT_PUBLIC_BACKEND_URL
+  : undefined;
+
 export const getBackendConfig = () => {
-  // Use environment variable for backend URL, fallback to default
-  const envBaseUrl = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_BACKEND_URL : undefined;
   const defaultBaseUrl = 'https://nainee-chatbot.hf.space';
 
   // Check if we have a configured URL in window (set by Docusaurus)
   if (typeof window !== 'undefined' && window.__BACKEND_CONFIG__) {
     return {
-      baseUrl: envBaseUrl || window.__BACKEND_CONFIG__.baseUrl || defaultBaseUrl
+      baseUrl: ENV_BASE_URL || window.__BACKEND_CONFIG__.baseUrl || defaultBaseUrl
     };
   }
 
   // For SSR or when window is not available, use environment variable or default
   return {
-    baseUrl: envBaseUrl || defaultBaseUrl
+    baseUrl: ENV_BASE_URL || defaultBaseUrl
   };
 };
 
